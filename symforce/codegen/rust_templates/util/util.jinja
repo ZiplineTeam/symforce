@@ -86,19 +86,16 @@ nalgebra::SMatrix::<{{ scalar_type }}, {{ rows }}, {{ cols }}>
 
 {# ------------------------------------------------------------------------- #}
 
- {# Format function docstring
- #
- # Args:
- #     docstring (str):
- #}
+{# Format function docstring
+#
+# Args:
+#     docstring (str):
+#}
 {% macro print_docstring(docstring) %}
 {%- if docstring %}
-
-/*
 {%- for line in docstring.split('\n') %}
-*{{ ' {}'.format(line).rstrip() }}
+/// {{ ' {}'.format(line).rstrip() }}
 {% endfor -%}
-*/
 {%- endif -%}
 {% endmacro %}
 
@@ -286,10 +283,10 @@ pub fn {{ name }}{% if template_declaration %}<{{ format_typename(Symbol, spec=s
             {# TODO(gareth): Support sparse return type? #}
             {% if issubclass(T_return, Matrix) or issubclass(T_return, Values) or is_symbolic(type) or is_sequence(type) %}
             {# Matrices, vectors, and scalars are returned directly. #}
-    return {{ name }};
+    {{ name }}
             {% else %}
             {# Other types must be constructed from the vector. #}
-    return {{ format_typename(type, name, spec=spec, scalar_type=scalar_type) }}::new({{ name }});
+    {{ format_typename(type, name, spec=spec, scalar_type=scalar_type) }}::new({{ name }})
             {% endif %}
         {% endif %}
     {% endfor %}

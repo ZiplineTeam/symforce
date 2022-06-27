@@ -9,7 +9,7 @@ use nalgebra;
 use num_traits::{Float, FromPrimitive};
 
 {% if spec.docstring %}
-{{ util.print_docstring(spec.docstring) }}
+{{ util.print_docstring(spec.docstring) -}}
 {% endif %}
 {{ util.function_declaration(spec, is_declaration=True, template_declaration=True) }} {
     {{ util.expr_code(spec) -}}
