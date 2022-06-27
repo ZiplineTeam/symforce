@@ -5,3 +5,4 @@
 
 from .cpp_code_printer import CppCodePrinter, ComplexCppCodePrinter
 from .python_code_printer import PythonCodePrinter
+from .rust_code_printer import RustCodePrinterCustomized

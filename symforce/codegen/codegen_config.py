@@ -84,3 +84,19 @@ class PythonConfig(CodegenConfig):
     line_length: int = 100
     use_eigen_types: bool = True
     use_numba: bool = False
+
+
+@dataclass
+class RustConfig(CodegenConfig):
+    """
+    Rust Codegen configuration.
+
+    Args:
+        module_name: String name of the module currently being generated.
+        type_to_module_name: Dict mapping from type definition to module name.
+    """
+    doc_comment_line_prefix: str = " * "
+    line_length: int = 100
+    use_eigen_types: bool = False
+    module_name: str = ""  # Name of the module we are currently generating.
+    type_to_module_name: T.Optional[T.Dict[T.Type, str]] = None

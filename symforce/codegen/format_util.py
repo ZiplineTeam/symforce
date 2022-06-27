@@ -70,3 +70,24 @@ def format_py_dir(dirname: str) -> None:
                     mode=BLACK_FILE_MODE,
                     write_back=black.WriteBack.YES,
                 )
+
+
+def format_rust(file_contents: str) -> str:
+    """
+    Autoformat a given Rust file using rustfmt
+
+    Args:
+        file_contents (str): The un-formatted contents of the file
+
+    Returns:
+        formatted_file_contents (str): The contents of the file after formatting
+    """
+    formatted_file_contents = T.cast(
+        str,
+        python_util.execute_subprocess(
+            ["rustfmt"],
+            stdin_data=file_contents,
+            log_stdout=False,
+        ),
+    )
+    return formatted_file_contents

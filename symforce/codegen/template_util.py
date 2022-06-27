@@ -21,6 +21,7 @@ from symforce.codegen import format_util
 CURRENT_DIR = os.path.dirname(__file__)
 CPP_TEMPLATE_DIR = os.path.join(CURRENT_DIR, "cpp_templates")
 PYTHON_TEMPLATE_DIR = os.path.join(CURRENT_DIR, "python_templates")
+RUST_TEMPLATE_DIR = os.path.join(CURRENT_DIR, "rust_templates")
 LCM_TEMPLATE_DIR = os.path.join(CURRENT_DIR, "lcm_templates")
 
 
@@ -32,6 +33,7 @@ class FileType(enum.Enum):
     LCM = enum.auto()
     MAKEFILE = enum.auto()
     TYPESCRIPT = enum.auto()
+    RUST = enum.auto()
 
     @staticmethod
     def from_extension(extension: str) -> FileType:
@@ -49,6 +51,8 @@ class FileType(enum.Enum):
             return FileType.MAKEFILE
         elif extension == "ts":
             return FileType.TYPESCRIPT
+        elif extension == "rs":
+            return FileType.RUST
         else:
             raise ValueError(f"Could not get FileType from extension {extension}")
 
@@ -76,7 +80,7 @@ class RelEnvironment(jinja2.Environment):
 def add_preamble(source: str, name: Path, filetype: FileType) -> str:
     prefix = (
         "//"
-        if filetype in (FileType.CPP, FileType.CUDA, FileType.LCM, FileType.TYPESCRIPT)
+        if filetype in (FileType.CPP, FileType.CUDA, FileType.LCM, FileType.TYPESCRIPT, FileType.RUST)
         else "#"
     )
     dashes = "-" * 77
@@ -96,11 +100,13 @@ def add_preamble(source: str, name: Path, filetype: FileType) -> str:
 
 
 @functools.lru_cache
-def jinja_env(template_dir: T.Openable) -> RelEnvironment:
+def jinja_env(template_dir: T.Openable, search_paths: T.Iterable[T.Openable] = ()) -> RelEnvironment:
     """
     Helper function to cache the Jinja environment, which enables caching of loaded templates
     """
-    loader = jinja2.FileSystemLoader(os.fspath(template_dir))
+    all_search_paths = [os.fspath(template_dir)]
+    all_search_paths.extend(search_paths)
+    loader = jinja2.FileSystemLoader(searchpath=all_search_paths)
     env = RelEnvironment(
         loader=loader,
         trim_blocks=True,
@@ -117,9 +123,10 @@ def render_template(
     output_path: T.Optional[T.Openable] = None,
     template_dir: T.Openable = CURRENT_DIR,
     autoformat: bool = True,
+    search_paths: T.Iterable[T.Openable] = ()
 ) -> str:
     """
-    Boiler plate to render template. Returns the rendered string and optionally writes to file.
+    Boilerplate to render template. Returns the rendered string and optionally writes to file.
 
     Args:
         template_path: file path of the template to render
@@ -127,6 +134,7 @@ def render_template(
         output_path: If provided, writes to file
         template_dir: Base directory where templates are found, defaults to symforce/codegen
         autoformat: Run a code formatter on the generated code
+        search_paths: Additional directories jinja should search when resolving imports.
     """
     logger.debug(f"Template  IN <-- {template_path}")
     if output_path:
@@ -142,7 +150,7 @@ def render_template(
 
     filetype = FileType.from_template_path(Path(template_name))
 
-    template = jinja_env(template_dir).get_template(os.fspath(template_name))
+    template = jinja_env(template_dir, search_paths=search_paths).get_template(os.fspath(template_name))
     rendered_str = add_preamble(str(template.render(**data)), template_name, filetype)
 
     if autoformat:
@@ -161,6 +169,8 @@ def render_template(
             rendered_str = format_util.format_py(rendered_str)
         elif filetype == FileType.PYTHON_INTERFACE:
             rendered_str = format_util.format_pyi(rendered_str)
+        elif filetype == FileType.RUST:
+            rendered_str = format_util.format_rust(rendered_str)
 
     if output_path:
         directory = os.path.dirname(output_path)
@@ -193,11 +203,14 @@ class TemplateList:
             self.TemplateListEntry(template_path=template_path, output_path=output_path, data=data)
         )
 
-    def render(self, autoformat: bool = True) -> None:
+    def render(self, autoformat: bool = True, template_dir: T.Openable = CURRENT_DIR,
+               search_paths: T.Iterable[T.Openable] = ()) -> None:
         for entry in self.items:
             render_template(
                 template_path=entry.template_path,
                 output_path=entry.output_path,
                 data=entry.data,
                 autoformat=autoformat,
+                template_dir=template_dir,
+                search_paths=search_paths,
             )

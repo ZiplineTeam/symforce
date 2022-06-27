@@ -347,12 +347,17 @@ def get_formatted_list(
             elif isinstance(config, codegen_config.CppConfig):
                 formatted_symbols = []
                 # NOTE(brad): The order of the symbols must match the storage order of geo.Matrix
-                # (as returned by geo.Matrix.to_storage). Hence, if there storage order were
+                # (as returned by geo.Matrix.to_storage). Hence, if their storage order were
                 # changed to, say, row major, the below for loops would have to be swapped to
                 # reflect that.
                 for j in range(value.shape[1]):
                     for i in range(value.shape[0]):
                         formatted_symbols.append(sm.Symbol(f"{key}({i}, {j})"))
+            elif isinstance(config, codegen_config.RustConfig):
+                formatted_symbols = []
+                for j in range(value.shape[1]):
+                    for i in range(value.shape[0]):
+                        formatted_symbols.append(sm.Symbol(f"{key}[({i}, {j})]"))
             else:
                 raise NotImplementedError()
             flattened_value = ops.StorageOps.to_storage(value)
@@ -508,6 +513,8 @@ def get_code_printer(config: codegen_config.CodegenConfig) -> "sm.CodePrinter":
             printer = printers.ComplexCppCodePrinter()
         else:
             printer = printers.CppCodePrinter()
+    elif isinstance(config, codegen_config.RustConfig):
+        printer = printers.RustCodePrinterCustomized()
     else:
         raise NotImplementedError(f"Unknown config type: {config}")
 

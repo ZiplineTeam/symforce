@@ -151,7 +151,7 @@ class Codegen:
             docstring or Codegen.default_docstring(inputs=inputs, outputs=outputs)
         ).rstrip()
 
-        self.types_included: T.Optional[T.Set[str]] = None
+        self.types_included: T.Optional[T.Dict[str, T.Type]] = None
         self.typenames_dict: T.Optional[T.Dict[str, str]] = None
         self.namespaces_dict: T.Optional[T.Dict[str, str]] = None
         self.unique_namespaces: T.Optional[T.Set[str]] = None
@@ -358,7 +358,7 @@ class Codegen:
         types_to_generate = []
         # Also keep track of non-Values types used so we can have the proper includes - things like
         # geo types and cameras
-        self.types_included = set()
+        self.types_included = dict()
         for d in (self.inputs, self.outputs):
             for key, value in d.items():
                 # If "value" is a list, extract an instance of a base element.
@@ -367,7 +367,7 @@ class Codegen:
                 if isinstance(base_value, Values):
                     types_to_generate.append((key, base_value))
                 else:
-                    self.types_included.add(type(base_value).__name__)
+                    self.types_included[type(base_value).__name__] = type(base_value)
 
         # Generate types from the Values objects in our inputs and outputs
         values_indices = {name: gen_type.index() for name, gen_type in types_to_generate}
@@ -439,6 +439,26 @@ class Codegen:
                 )
 
             out_function_dir = cpp_function_dir
+        elif isinstance(self.config, codegen_config.RustConfig):
+            if skip_directory_nesting:
+                rust_function_dir = output_dir
+            else:
+                rust_function_dir = output_dir / "rust" / "symforce" / namespace
+
+            logger.info(
+                f'Creating Rust function "{python_util.snakecase_to_camelcase(self.name)}" at "{rust_function_dir}"'
+            )
+
+            # Add rust_util to the jinja scope, which adds some rust-specific python util functions:
+            from . import rust_util
+            template_data.update(rust_util=rust_util)
+
+            templates.add(
+                Path(template_util.RUST_TEMPLATE_DIR) / "function" / "FUNCTION.rs.jinja",
+                rust_function_dir / f"{generated_file_name}.rs",
+                template_data,
+            )
+            out_function_dir = rust_function_dir
         else:
             raise NotImplementedError(f'Unknown config type: "{self.config}"')
 
@@ -756,7 +776,11 @@ class Codegen:
             arg_jacobians = jacobian_helpers.tangent_jacobians(result, input_args)
 
             for arg_name, arg, arg_jacobian in zip(which_args, input_args, arg_jacobians):
-                jacobian_name = f"{result_name}_D_{arg_name}"
+                if isinstance(self.config, codegen_config.RustConfig):
+                    # In keeping w/ rust style, d must be lowercase.
+                    jacobian_name = f"{result_name}_d_{arg_name}"
+                else:
+                    jacobian_name = f"{result_name}_D_{arg_name}"
                 outputs[jacobian_name] = arg_jacobian
                 all_jacobian_names.append(jacobian_name)
 

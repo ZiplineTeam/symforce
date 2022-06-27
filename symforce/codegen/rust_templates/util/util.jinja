@@ -1,0 +1,319 @@
+{# ----------------------------------------------------------------------------
+ # SymForce - Copyright 2022, Skydio, Inc.
+ # This source code is under the Apache 2.0 license found in the LICENSE file.
+ # ---------------------------------------------------------------------------- #}
+
+{# ------------------------------------------------------------------------- #}
+{# Utilities for Rust code generation templates.                             #}
+{# ------------------------------------------------------------------------- #}
+
+{# Vector type of a given dimension
+ #
+ # Args:
+ #     dim (int):
+ #}
+{%- macro vector_type(dim, scalar_type="Scalar") -%}
+nalgebra::SVector::<{{ scalar_type }}, {{ dim }}>
+{%- endmacro -%}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Matrix type of a given dimension
+ #
+ # Args:
+ #     rows (int):
+ #     cols (int):
+ #}
+{%- macro matrix_type(rows, cols, scalar_type="Scalar") -%}
+nalgebra::SMatrix::<{{ scalar_type }}, {{ rows }}, {{ cols }}>
+{%- endmacro -%}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Convert a class to the emitted string
+ #
+ # Args:
+ #     T_or_value (type or Element):
+ #     name (str): Optional name in case type is a generated struct
+ #     spec (Codegen): Context for what we are currently generating.
+ #
+ # TODO(gareth): Feels like abstractions have broken-down a bit when this method needs the "spec"
+ # type. Instead it feels like [namespaces_dict, typenames_dict] should live in `config`?
+ #}
+{%- macro format_typename(T_or_value, name, spec, scalar_type="Scalar") %}
+    {%- set T = python_util.get_type(T_or_value) -%}
+    {%- if T.__name__ == 'Symbol' or is_symbolic(T_or_value) or T.__name__ == 'float' -%}
+        {%- if issubclass(T, DataBuffer) -%}
+            {{ scalar_type }}* const
+        {%- else -%}
+            {{ scalar_type }}
+        {%- endif -%}
+    {%- elif T.__name__ == 'NoneType' -%}
+        Void
+    {%- elif issubclass(T, Matrix) -%}
+        {# No nalgebra support for sparse yet, so just place dense: #}
+        {% if T_or_value.shape[1] == 1 %}
+        {{ vector_type(T_or_value.shape[0], scalar_type) }}
+        {% else %}
+        {{ matrix_type(T_or_value.shape[0], T_or_value.shape[1], scalar_type) }}
+        {% endif %}
+    {%- elif issubclass(T, Values) -%}
+        {# TODO(gareth): Convert to rust syntax! #}
+        {{ spec.namespaces_dict[name] }}::{{ spec.typenames_dict[name] }}
+    {%- elif is_sequence(T_or_value) -%}
+        &[{{ format_typename(T_or_value[0], name, spec=spec, scalar_type=scalar_type) }}; {{ T_or_value | length }}]
+    {%- else -%}
+        {# Determine the namespace of this object: #}
+        {% set module_name = rust_util.get_module_name(type_definition=T, config=spec.config) %}
+        {% if module_name and module_name != spec.config.module_name %}{{ module_name }}::{% endif %}{{- T.__name__ -}}::<{{ scalar_type }}>
+    {%- endif -%}
+{% endmacro -%}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Get the type of the object in the output Values with key given by spec.return_key
+ #
+ # Args:
+ #     spec (Codegen):
+ #}
+{%- macro get_return_type(spec, scalar_type="Scalar") %}
+    {%- if spec.return_key is not none -%}
+        {{ format_typename(spec.outputs[spec.return_key], spec.return_key, spec=spec, scalar_type=scalar_type) }}
+    {%- else -%}
+        ()
+    {%- endif -%}
+{% endmacro -%}
+
+{# ------------------------------------------------------------------------- #}
+
+ {# Format function docstring
+ #
+ # Args:
+ #     docstring (str):
+ #}
+{% macro print_docstring(docstring) %}
+{%- if docstring %}
+
+/*
+{%- for line in docstring.split('\n') %}
+*{{ ' {}'.format(line).rstrip() }}
+{% endfor -%}
+*/
+{%- endif -%}
+{% endmacro %}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Format function input argument
+ #
+ # Args:
+ #     T_or_value (type or Element):
+ #     name (str):
+ #     spec (Codegen): Context for what we are currently generating.
+ #}
+{%- macro format_input_arg(T_or_value, name, spec, scalar_type="Scalar") %}
+    {%- set T = python_util.get_type(T_or_value) -%}
+    {{ name }}: {{ format_typename(T_or_value, name="", spec=spec, scalar_type=scalar_type) }}
+{% endmacro -%}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Format mutable output argument
+ #
+ # Args:
+ #     T_or_value (type or Element):
+ #     name (str):
+ #     spec (Codegen): Context for what we are currently generating.
+ #}
+{%- macro format_output_arg(T_or_value, name, spec, scalar_type="Scalar") %}
+    {{ name }}: Option<&mut {{- format_typename(T_or_value, name=name, spec=spec, scalar_type=scalar_type) -}}>
+{%- endmacro -%}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Generate input arguments declaration.
+ #
+ # Args:
+ #     spec (Codegen):
+ #     is_declaration (bool): Is this a declaration as opposed to a definition? (declarations
+ #         include default arguments)
+ #}
+{%- macro input_args_declaration(spec, is_declaration, scalar_type="Scalar") %}
+    {%- for name, type in spec.inputs.items() -%}
+        {%- if name != "self" -%}
+            {{ format_input_arg(type, name, spec=spec, scalar_type=scalar_type) }}
+        {%- else -%}
+            {# self does not get a type: #}
+            &self
+        {%- endif -%}
+        {%- if not loop.last
+                or spec.outputs.items() | length > 1
+                or (spec.outputs.items() | length == 1 and spec.return_key is none) -%}
+        , {% endif -%}
+    {%- endfor -%}
+    {%- for name, type in spec.outputs.items() -%}
+        {%- if name != spec.return_key -%}
+            {{- format_output_arg(type, name, spec=spec, scalar_type=scalar_type) -}}
+            {%- if not loop.last -%}
+                {%- if not (loop.revindex0 == 1 and loop.nextitem[0] == spec.return_key) -%}
+                , {% endif -%}
+            {% endif -%}
+        {%- endif -%}
+    {%- endfor -%}
+{% endmacro -%}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Generate function declaration
+ #
+ # Args:
+ #     spec (Codegen):
+ #     is_declaration (bool): Is this a declaration as opposed to a definition? (declarations
+ #         include default arguments)
+ #     template_declaration (bool): If true, include the template <> block. We set this to false
+ #         when generating methods on structs.
+ #}
+{%- macro function_declaration(spec, is_declaration, template_declaration, scalar_type="Scalar") -%}
+{% set name = spec.name %}
+{% set function_attributes = rust_util.get_function_attributes(spec) %}
+{# Allow unused assignments, since the return value is sometimes set then changed. #}
+{% if function_attributes %}#[{{function_attributes}}]{% endif %}
+pub fn {{ name }}{% if template_declaration %}<{{ format_typename(Symbol, spec=spec) }}>{% endif %}
+  ({{- input_args_declaration(spec, is_declaration, scalar_type) -}})
+  -> {{ get_return_type(spec, scalar_type) }}
+{% if template_declaration %}
+  where {{ format_typename(Symbol, spec=spec) }}: Float + FromPrimitive + nalgebra::Scalar
+{% endif %}
+{%- endmacro -%}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Helper to generate code to fill out an output object, either returned or as an output argument pointer
+ #
+ # Args:
+ #     name (str): Name of the output object
+ #     type (type): Type of the output object
+ #     terms (List[Tuple[str]]): List of output terms for this object
+ #     spec (Codegen):
+ #}
+{% macro format_output_dense(name, type, terms, spec, scalar_type="Scalar") -%}
+{% set T = python_util.get_type(type) %}
+{% set dims = ops.StorageOps.storage_dim(type) %}
+{% if (issubclass(T, Matrix) or issubclass(T, Values) or is_sequence(type)) %}
+    {% if name == spec.return_key and T.__name__ != 'NoneType' %}
+        {# Create a new object to return #}
+    let mut {{ name }}: {{ format_typename(type, name, spec=spec, scalar_type=scalar_type) }}
+        = {{ format_typename(type, name, spec=spec, scalar_type=scalar_type) }}::zeros();
+    {% else %}
+        {# In C++ we would get a reference here, but in Rust the let statement already created one. #}
+    {% endif %}
+{% elif is_symbolic(type) %}
+    {# For symbols (scalars), do not call zeros(). #}
+    let mut {{ name }}: {{ format_typename(type, name, spec=spec, scalar_type=scalar_type) }}
+        = {{ format_typename(type, name, spec=spec, scalar_type=scalar_type) }}::from_i32(0).unwrap();
+{% else %}
+    {# geo/cam object. Since we can't access individual element of data, create a copy #}
+    {# TODO(nathan): Maybe add a [] operator to geo/cam objects so we don't have to do this? #}
+    {# TODO(gareth): For now zero-initialize. Alternatively construct temps and pass to new()? #}
+    let mut {{name}}: {{ vector_type(dims, scalar_type) }} = {{ vector_type(dims, scalar_type) }}::zeros();
+{% endif %}
+
+{% for lhs, rhs in terms %}
+{{ lhs }} = {{ rhs }};
+{% endfor %}
+{% if name != spec.return_key %}
+    {% if not issubclass(T, Matrix) and not issubclass(T, Values) and not is_symbolic(type) and not is_sequence(type) %}
+*{{ name }} = {{ format_typename(type, name, spec=spec, scalar_type=scalar_type) }}(_{{ name }});
+    {% endif %}
+{% endif %}
+{% endmacro -%}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Helper to generate all pointer outputs #}
+{% macro format_outputs_dense_and_sparse(spec, scalar_type="Scalar") -%}
+    {% for name, type, terms in spec.print_code_results.dense_terms %}
+        {% if name == spec.return_key %}
+        {# Return type must be present, and so we do not need a let Some() statement here: #}
+    {{ format_output_dense(name, type, terms, spec, scalar_type) | indent(width=4) | trim }}
+        {% else %}
+
+    if let Some({{name}}) = {{name}} {
+        {{ format_output_dense(name, type, terms, spec, scalar_type) | indent(width=8) | trim }}
+    }
+        {% endif %}
+    {% endfor %}
+    {% for name, type, terms in spec.print_code_results.sparse_terms %}
+        {# TODO(gareth): Support sparse terms in rust. #}
+    {% endfor %}
+{% endmacro -%}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Generate inner code for computing the given expression.
+ #
+ # Args:
+ #     spec (Codegen):
+ #}
+{% macro expr_code(spec, scalar_type="Scalar") -%}
+    // Total ops: {{ spec.print_code_results.total_ops }}
+
+    // Input arrays
+    {% for name, type in spec.inputs.items() %}
+        {% set T = python_util.get_type(type) %}
+        {% if not issubclass(T, Values) and not issubclass(T, Matrix) and not is_symbolic(type) and not is_sequence(type) %}
+            {% if name == "self" %}
+    let _{{ name }}: &{{ vector_type(ops.StorageOps.storage_dim(type), scalar_type) }} = self.data();
+            {% else %}
+    let _{{ name }}: &{{ vector_type(ops.StorageOps.storage_dim(type), scalar_type) }} = {{ name }}.data();
+            {% endif %}
+        {% endif %}
+    {% endfor %}
+
+    {% if spec.print_code_results.intermediate_terms | length > 0 %}
+    // Intermediate terms ({{ spec.print_code_results.intermediate_terms | length }})
+    {% endif %}
+    {% for lhs, rhs in spec.print_code_results.intermediate_terms %}
+    let {{ lhs }}: {{ format_typename(Symbol, name="", spec=spec, scalar_type=scalar_type) }}  = {{ rhs }};
+    {% endfor %}
+
+    // Output terms ({{ spec.outputs.items() | length }})
+    {{ format_outputs_dense_and_sparse(spec, scalar_type) | trim }}
+
+    {% for name, type in spec.outputs.items() %}
+        {% set T_return = python_util.get_type(type) %}
+        {% if name == spec.return_key and T_return.__name__ != 'NoneType' %}
+            {# TODO(gareth): Support sparse return type? #}
+            {% if issubclass(T_return, Matrix) or issubclass(T_return, Values) or is_symbolic(type) or is_sequence(type) %}
+            {# Matrices, vectors, and scalars are returned directly. #}
+    return {{ name }};
+            {% else %}
+            {# Other types must be constructed from the vector. #}
+    return {{ format_typename(type, name, spec=spec, scalar_type=scalar_type) }}::new({{ name }});
+            {% endif %}
+        {% endif %}
+    {% endfor %}
+{%- endmacro -%}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Generate import code for dependant types.
+ #
+ # Args:
+ #     types_included (Dict[str, Type]): Mapping from typename to its python type.
+ #     config (RustConfig): Rust configuration parameters.
+ #}
+{% macro import_code(types_included, config) -%}
+    {# Iterate over types we depend on and generate import statements. #}
+    {% for typename, type_definition in types_included.items() %}
+        {% set module_name = rust_util.get_module_name(type_definition=type_definition, config=config) %}
+        {% if module_name %}
+            {% if module_name == config.module_name %}
+                {# When generating in the current module, we need to use a different path w/ crate:: #}
+    use crate::{{ typename.lower() }}::{{ typename }};
+            {% else %}
+    use {{ module_name }}::{{ typename }};
+            {% endif %}
+        {% endif %}
+    {% endfor %}
+{%- endmacro -%}
