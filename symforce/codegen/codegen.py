@@ -26,6 +26,7 @@ from symforce.codegen import template_util
 from symforce.codegen import codegen_util
 from symforce.codegen import codegen_config
 from symforce.codegen import types_package_codegen
+from symforce.codegen.type_description import TypeDescription
 from symforce.type_helpers import symbolic_inputs
 
 CURRENT_DIR = Path(__file__).parent
@@ -339,12 +340,7 @@ class Codegen:
             self.name is not None
         ), "Name should be set either at construction or by with_jacobians"
 
-        if output_dir is None:
-            output_dir = Path(tempfile.mkdtemp(prefix=f"sf_codegen_{self.name}_", dir="/tmp"))
-            logger.debug(f"Creating temp directory: {output_dir}")
-        elif isinstance(output_dir, str):
-            output_dir = Path(output_dir)
-        assert isinstance(output_dir, Path)
+        output_dir = self._maybe_create_output_dir(output_dir=output_dir)
 
         if lcm_bindings_output_dir is None:
             lcm_bindings_output_dir = output_dir
@@ -358,25 +354,11 @@ class Codegen:
         # List of (template_path, output_path, data)
         templates = template_util.TemplateList()
 
-        # Output types
-        # Find each Values object in the inputs and outputs
-        types_to_generate = []
-        # Also keep track of non-Values types used so we can have the proper includes - things like
-        # geo types and cameras
-        self.types_included = set()
-        for d in (self.inputs, self.outputs):
-            for key, value in d.items():
-                # If "value" is a list, extract an instance of a base element.
-                base_value = codegen_util.get_base_instance(value)
-
-                if isinstance(base_value, Values):
-                    types_to_generate.append((key, base_value))
-                else:
-                    self.types_included.add(type(base_value).__name__)
+        # Determine types we need to generate as dependencies
+        values_indices = {name: gen_type.index() for name, gen_type in self._get_types_to_generate()}
 
         # Generate types from the Values objects in our inputs and outputs
-        values_indices = {name: gen_type.index() for name, gen_type in types_to_generate}
-        types_codegen_data = types_package_codegen.generate_types(
+        types_codegen_data = types_package_codegen.generate_lcm_types(
             package_name=namespace,
             file_name=generated_file_name,
             values_indices=values_indices,
@@ -397,6 +379,119 @@ class Codegen:
         # Namespace of this function + generated types
         self.namespace = namespace
 
+        out_function_dir, generated_files = self._render_templates(
+            generated_file_name=generated_file_name,
+            skip_directory_nesting=skip_directory_nesting,
+            output_dir=output_dir,
+            templates=templates)
+
+        lcm_data = codegen_util.generate_lcm_types(
+            lcm_type_dir=types_codegen_data["lcm_type_dir"],
+            lcm_files=types_codegen_data["lcm_files"],
+            lcm_output_dir=types_codegen_data["lcm_bindings_output_dir"],
+        )
+        return GeneratedPaths(
+            output_dir=output_dir,
+            lcm_type_dir=Path(types_codegen_data["lcm_type_dir"]),
+            function_dir=out_function_dir,
+            python_types_dir=lcm_data["python_types_dir"],
+            cpp_types_dir=lcm_data["cpp_types_dir"],
+            generated_files=generated_files,
+        )
+
+    def generate_function_no_lcm(
+        self,
+        output_dir: T.Openable = None,
+        shared_types: T.Mapping[str, str] = None,
+        namespace: str = "sym",
+        generated_file_name: str = None,
+        skip_directory_nesting: bool = False,
+    ) -> T.Tuple[GeneratedPaths, T.Dict[str, TypeDescription]]:
+        """
+        Generates a function that computes the given outputs from the given inputs. This variant
+        avoids creating any LCM types in the process.
+
+        Usage for generating multiple functions with a shared type:
+            codegen_obj_1.generate_function(namespace="my_namespace")
+            shared_types = {"my_type": "my_namespace.my_type_t"}
+            codegen_obj_2.generate_function(shared_types=shared_types, namespace="my_namespace")
+
+        In the example above, both codegen_obj_1 and codegen_obj_2 use the type "my_type". During
+        the first call to "generate_function" we generate the type "my_type", and it then becomes
+        a shared type for the second call to "generate_function". This signals that "my_type" does
+        not need to be generated during the second call to "generate_function" as it already exists.
+
+        Args:
+            output_dir: Directory in which to output the generated function. Any generated types will
+                be located in a subdirectory with name equal to the namespace argument.
+            shared_types: Mapping between types defined as part of this codegen object (e.g. keys in
+                self.inputs that map to Values objects) and previously generated external types.
+            namespace: Namespace for the generated function and any generated types.
+            generated_file_name: Stem for the filename into which the function is generated, with
+                                 no file extension
+            skip_directory_nesting: Generate the output file directly into output_dir instead of
+                                    adding the usual directory structure inside output_dir
+        """
+        assert (
+            self.name is not None
+        ), "Name should be set either at construction or by with_jacobians"
+
+        output_dir = self._maybe_create_output_dir(output_dir=output_dir)
+        if generated_file_name is None:
+            generated_file_name = self.name
+
+        # Determine types we need to generate as dependencies
+        values_indices = {name: gen_type.index() for name, gen_type in self._get_types_to_generate()}
+
+        # Generate types from the Values objects in our inputs and outputs
+        types_dict = types_package_codegen.build_types_dict(
+            package_name=namespace,
+            values_indices=values_indices,
+            shared_types=shared_types
+        )
+
+        # Create mapping from short type name to namespace and full typename
+        self.typenames_dict, self.namespaces_dict = \
+            types_package_codegen.build_typenames_and_namespace_dict(
+                package_name=namespace, values_indices=values_indices,
+                types_dict=types_dict, shared_types=shared_types)
+
+        # Namespace of this function + generated types
+        self.namespace = namespace
+
+        # Render the jinja templates
+        out_function_dir, generated_files = self._render_templates(
+            generated_file_name=generated_file_name,
+            skip_directory_nesting=skip_directory_nesting,
+            output_dir=output_dir)
+
+        return GeneratedPaths(
+            output_dir=output_dir,
+            lcm_type_dir=Path(),
+            function_dir=out_function_dir,
+            python_types_dir=Path(),
+            cpp_types_dir=Path(),
+            generated_files=generated_files,
+        ), types_dict
+
+    def _render_templates(self,
+                          generated_file_name: str,
+                          skip_directory_nesting: bool,
+                          output_dir: Path,
+                          templates: T.Optional[template_util.TemplateList] = None) -> T.Tuple[Path, T.List[Path]]:
+        """
+        Actually render the templates to create this function in the target language.
+        Args:
+            generated_file_name: Stem for the filename into which the function is generated, with
+                                 no file extension
+            skip_directory_nesting: Generate the output file directly into output_dir instead of
+                                    adding the usual directory structure inside output_dir
+            output_dir: Directory to write files into.
+            templates: Optional list of templates to append to.
+        """
+        assert self.namespaces_dict is not None
+        self.unique_namespaces = set(self.namespaces_dict.values())
+
         template_data = dict(self.common_data(), spec=self)
         self.config.update_template_data(data=template_data)
 
@@ -405,31 +500,46 @@ class Codegen:
         if skip_directory_nesting:
             out_function_dir = output_dir
         else:
-            out_function_dir = output_dir / backend_name / "symforce" / namespace
+            out_function_dir = output_dir / backend_name / "symforce" / self.namespace
 
         logger.info(f'Creating {backend_name} function from "{self.name}" at "{out_function_dir}"')
 
         # Get templates to render
+        if templates is None:
+            # List of (template_path, output_path, data)
+            templates = template_util.TemplateList()
         for source, dest in self.config.templates_to_render(generated_file_name):
             templates.add(template_dir / source, out_function_dir / dest, template_data)
 
         # Render
         templates.render(autoformat=self.config.autoformat)
+        return out_function_dir, [Path(v.output_path) for v in templates.items]
 
-        lcm_data = codegen_util.generate_lcm_types(
-            lcm_type_dir=types_codegen_data["lcm_type_dir"],
-            lcm_files=types_codegen_data["lcm_files"],
-            lcm_output_dir=types_codegen_data["lcm_bindings_output_dir"],
-        )
+    def _maybe_create_output_dir(self, output_dir: T.Optional[T.Openable]) -> Path:
+        """
+        Create the output directory. If none is specified, pick something in /tmp.
+        """
+        if output_dir is None:
+            output_dir = Path(tempfile.mkdtemp(prefix=f"sf_codegen_{self.name}_", dir="/tmp"))
+            logger.debug(f"Creating temp directory: {output_dir}")
+        elif isinstance(output_dir, str):
+            output_dir = Path(output_dir)
+        assert isinstance(output_dir, Path)
+        return output_dir
 
-        return GeneratedPaths(
-            output_dir=output_dir,
-            lcm_type_dir=Path(types_codegen_data["lcm_type_dir"]),
-            function_dir=out_function_dir,
-            python_types_dir=lcm_data["python_types_dir"],
-            cpp_types_dir=lcm_data["cpp_types_dir"],
-            generated_files=[Path(v.output_path) for v in templates.items],
-        )
+    def _get_types_to_generate(self) -> T.List[T.Tuple[str, Values]]:
+        """
+        Iterate over inputs and outputs and determine which types we need to generate.
+        """
+        types_to_generate = []
+        for d in (self.inputs, self.outputs):
+            for key, value in d.items():
+                # If "value" is a list, extract an instance of a base element.
+                base_value = codegen_util.get_base_instance(value)
+                if isinstance(base_value, Values):
+                    types_to_generate.append((key, base_value))
+
+        return types_to_generate
 
     @staticmethod
     def default_docstring(
