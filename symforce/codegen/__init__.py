@@ -12,3 +12,4 @@ from .codegen_config import CodegenConfig
 
 from .backends.cpp.cpp_config import CppConfig
 from .backends.python.python_config import PythonConfig
+from .backends.rust.rust_config import RustConfig

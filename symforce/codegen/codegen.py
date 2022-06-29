@@ -150,7 +150,7 @@ class Codegen:
             docstring or Codegen.default_docstring(inputs=inputs, outputs=outputs)
         ).rstrip()
 
-        self.types_included: T.Optional[T.Set[str]] = None
+        self.types_included: T.Optional[T.Dict[str, T.Type]] = None
         self.typenames_dict: T.Optional[T.Dict[str, str]] = None
         self.namespaces_dict: T.Optional[T.Dict[str, str]] = None
         self.unique_namespaces: T.Optional[T.Set[str]] = None
@@ -363,7 +363,7 @@ class Codegen:
         types_to_generate = []
         # Also keep track of non-Values types used so we can have the proper includes - things like
         # geo types and cameras
-        self.types_included = set()
+        self.types_included = dict()
         for d in (self.inputs, self.outputs):
             for key, value in d.items():
                 # If "value" is a list, extract an instance of a base element.
@@ -372,7 +372,7 @@ class Codegen:
                 if isinstance(base_value, Values):
                     types_to_generate.append((key, base_value))
                 else:
-                    self.types_included.add(type(base_value).__name__)
+                    self.types_included[type(base_value).__name__] = type(base_value)
 
         # Generate types from the Values objects in our inputs and outputs
         values_indices = {name: gen_type.index() for name, gen_type in types_to_generate}
@@ -398,8 +398,9 @@ class Codegen:
         self.namespace = namespace
 
         template_data = dict(self.common_data(), spec=self)
-        template_dir = self.config.template_dir()
+        self.config.update_template_data(data=template_data)
 
+        template_dir = self.config.template_dir()
         backend_name = self.config.backend_name()
         if skip_directory_nesting:
             out_function_dir = output_dir
