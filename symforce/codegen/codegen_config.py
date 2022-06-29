@@ -121,3 +121,14 @@ class CodegenConfig:
         Format accessor for eigen_lcm types.
         """
         pass
+
+    @abstractmethod
+    def update_template_data(self, data: T.Dict[str, T.Any]) -> None:
+        """
+        Derived classes may override this to customize the "template data" dict. This dict
+        is passed to jinja at code-generation time.
+
+        Args:
+            data: Dict passed by Codegen. The function should modify this in-place.
+        """
+        pass
