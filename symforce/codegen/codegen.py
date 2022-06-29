@@ -604,7 +604,7 @@ class Codegen:
             )
 
         # Render
-        templates.render(autoformat=self.config.autoformat)
+        templates.render(autoformat=self.config.autoformat, template_dir=template_dir)
         return out_function_dir, [Path(v.output_path) for v in templates.items]
 
     def _maybe_create_output_dir(self, output_dir: T.Optional[T.Openable]) -> Path:
