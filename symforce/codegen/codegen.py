@@ -215,7 +215,15 @@ class Codegen:
             docstring or Codegen.default_docstring(inputs=inputs, outputs=outputs)
         ).rstrip()
 
-        self.types_included: T.Optional[T.Set[str]] = None
+        # Create a set of types that this function depends on, but does not generate (non-Values).
+        self.types_included: T.Optional[T.Set[str]] = set()
+        for d in (self.inputs, self.outputs):
+            for key, value in d.items():
+                # If "value" is a list, extract an instance of a base element.
+                base_value = codegen_util.get_base_instance(value)
+                if not isinstance(base_value, Values):
+                    self.types_included.add(type(base_value).__name__)
+
         self.typenames_dict: T.Optional[T.Dict[str, str]] = None
         self.namespaces_dict: T.Optional[T.Dict[str, str]] = None
         self.unique_namespaces: T.Optional[T.Set[str]] = None
