@@ -150,7 +150,8 @@ class RustCodePrinterCustomized(RustCodePrinter):
 
         # We need the A.max(B) syntax, so that f32::max or f64::max is called.
         # We can't call std::cmp::max because floats do not satisfy std::cmp::Ord in rust.
-        return f"({self._print(expr.args[0])}).max({rhs})"
+        left_arg = self._print_caller_var(expr=expr.args[0])
+        return f"{left_arg}.max({rhs})"
 
     def _print_Min(self, expr: sympy.Min) -> str:
         """
@@ -165,7 +166,8 @@ class RustCodePrinterCustomized(RustCodePrinter):
         else:
             rhs = self._print(sympy.Min(*expr.args[1:]))
 
-        return f"({self._print(expr.args[0])}).min({rhs})"
+        left_arg = self._print_caller_var(expr=expr.args[0])
+        return f"{left_arg}.min({rhs})"
 
     def _print(self, expr, **kwargs):
         """
@@ -178,3 +180,19 @@ class RustCodePrinterCustomized(RustCodePrinter):
         elif isinstance(expr, sympy.Max):
             return self._print_Max(expr=expr)
         return super()._print(expr=expr, **kwargs)
+
+    def _print_caller_var(self, expr):
+        """
+        Customizations:
+            * Do not pass the _type argument when printing numbers. We have explicit casting and to
+              not need this.
+        """
+        if len(expr.args) > 1:
+            # for something like `sin(x + y + z)`,
+            # make sure we can get '(x + y + z).sin()'
+            # instead of 'x + y + z.sin()'
+            return '(' + self._print(expr) + ')'
+        elif expr.is_number:
+            return self._print(expr)
+        else:
+            return self._print(expr)
