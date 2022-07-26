@@ -310,7 +310,7 @@ def fixed_readme() -> str:
 
 
 setup(
-    name="symforce",
+    name="zipline-symforce",
     version=symforce_version(),
     author="Skydio, Inc",
     author_email="hayk@skydio.com",
