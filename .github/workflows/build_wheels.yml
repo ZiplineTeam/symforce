@@ -26,7 +26,7 @@ jobs:
         user: ${{ secrets.ARTIFACTORY_USER }}
         password: ${{ secrets.ARTIFACTORY_PASSWORD }}
         repository_url: https://zipline.jfrog.io/zipline/api/pypi/pypi
-        packages_dir: client/dist/
+        packages_dir: dist/
 
   build-macos:
     runs-on: ${{ matrix.os }}
