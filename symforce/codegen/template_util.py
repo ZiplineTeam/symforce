@@ -187,7 +187,7 @@ def render_template(
 
     filetype = FileType.from_template_path(Path(template_path))
 
-    template = jinja_env(template_dir, search_paths=search_paths).get_template(os.fspath(template_name))
+    template = jinja_env(template_dir, search_paths=search_paths).get_template(os.fspath(template_path))
     rendered_str = add_preamble(
         str(template.render(**data)),
         template_path,
@@ -260,7 +260,7 @@ class TemplateList:
                 template_path=entry.template_path,
                 output_path=entry.output_path,
                 data=entry.data,
-                template_dir=self.template_dir,
+                template_dir=entry.template_dir,
                 autoformat=autoformat,
                 search_paths=search_paths,
             ))

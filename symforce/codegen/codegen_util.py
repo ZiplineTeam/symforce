@@ -359,9 +359,10 @@ def get_formatted_list(
             formatted_symbols = []
             for j in range(value.shape[1]):
                 for i in range(value.shape[0]):
-                    formatted_symbols.append(
-                        sf.Symbol(config.format_matrix_accessor(key, i, j, shape=value.shape))
-                    )
+                    name = config.format_matrix_accessor(key, i, j, shape=value.shape)
+                    if name is None:
+                        raise RuntimeError("format_matrix_accessor should not return None!")
+                    formatted_symbols.append(sf.Symbol(name=name))
 
             flattened_value = ops.StorageOps.to_storage(value)
 
