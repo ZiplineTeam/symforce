@@ -46,12 +46,12 @@ class FixedBundleAdjustmentProblem:
         # Build residual
         self.residual = self._build_residual()
 
-    def generate(self, output_dir: str) -> None:
+    def generate(self, output_dir: T.Openable) -> None:
         """
         Generates functions from symbolic expressions
         """
 
-        logger.info("Generating linearization function for fixed-size problem")
+        logger.debug("Generating linearization function for fixed-size problem")
 
         linearization_func = self._build_codegen_object()
 
@@ -62,7 +62,7 @@ class FixedBundleAdjustmentProblem:
         """
         Create Codegen object for the linearization function
         """
-        logger.info("Building linearization function")
+        logger.debug("Building linearization function")
 
         flat_keys = {key: re.sub(r"[\.\[\]]+", "_", key) for key in self.values.keys_recursive()}
 

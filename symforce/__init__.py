@@ -59,7 +59,7 @@ def set_log_level(log_level: str) -> None:
 
 
 # Set default
-set_log_level(os.environ.get("SYMFORCE_LOGLEVEL", "WARNING"))
+set_log_level(os.environ.get("SYMFORCE_LOGLEVEL", "INFO"))
 
 # -------------------------------------------------------------------------------------------------
 # Symbolic API configuration
@@ -265,12 +265,13 @@ def _set_epsilon(new_epsilon: T.Any) -> None:
     Args:
         new_epsilon: The new default epsilon to use
     """
-    if _have_used_epsilon:
+    global _epsilon  # pylint: disable=global-statement
+
+    if _have_used_epsilon and new_epsilon != _epsilon:
         raise AlreadyUsedEpsilon(
             "Cannot set return value of epsilon after it has already been called."
         )
 
-    global _epsilon  # pylint: disable=global-statement
     _epsilon = new_epsilon
 
 

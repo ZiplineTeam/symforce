@@ -3,10 +3,6 @@
 # This source code is under the Apache 2.0 license found in the LICENSE file.
 # ----------------------------------------------------------------------------
 
-import functools
-
-import numpy as np
-
 import symforce
 
 symforce.set_epsilon_to_symbol()
@@ -16,8 +12,7 @@ from lcmtypes.sym._key_t import key_t
 from lcmtypes.sym._type_t import type_t
 
 import symforce.symbolic as sf
-from symforce import cc_sym
-from symforce import typing as T
+from symforce import logger
 from symforce.opt.factor import Factor
 from symforce.opt.optimizer import Optimizer
 from symforce.test_util import TestCase
@@ -69,10 +64,10 @@ class SymforcePyOptimizerTest(TestCase):
 
         result = optimizer.optimize(initial_values)
 
-        print(f"Initial values: {result.initial_values}")
-        print(f"Optimized values: {result.optimized_values}")
-        print(f"Num iterations: {len(result.iteration_stats)}")
-        print(f"Final error: {result.error()}")
+        logger.debug(f"Initial values: {result.initial_values}")
+        logger.debug(f"Optimized values: {result.optimized_values}")
+        logger.debug(f"Num iterations: {len(result.iteration_stats)}")
+        logger.debug(f"Final error: {result.error()}")
 
         # Check values
         self.assertEqual(len(result.iteration_stats), 7)
@@ -95,7 +90,9 @@ class SymforcePyOptimizerTest(TestCase):
         self.assertNotEqual(index_entry.key, key_t())
 
         # Check that the factor cache has the expected number of entries
-        self.assertEqual(len(Factor._generated_residual_cache), 2)
+        self.assertEqual(
+            len(Factor._generated_residual_cache), 2  # pylint: disable=protected-access
+        )
 
         index_entry2 = optimizer.linearization_index_entry("x1")
         self.assertEqual(index_entry, index_entry2)

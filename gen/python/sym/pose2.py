@@ -26,16 +26,20 @@ class Pose2(object):
     The tangent space is one angle for rotation followed by two elements for translation in the
     non-rotated frame.
 
-    For Lie group enthusiasts: This class is on the PRODUCT manifold, if you really really want
-    SE(2) you should use Pose2_SE2.  On this class, the group operations (e.g. compose and between)
-    operate as you'd expect for a Pose or SE(2), but the manifold operations (e.g. retract and
-    local_coordinates) operate on the product manifold SO(2) x R2.  This means that:
+    For Lie group enthusiasts: This class is on the PRODUCT manifold.  On this class, the group
+    operations (e.g. compose and between) operate as you'd expect for a Pose or SE(2), but the
+    manifold operations (e.g. retract and local_coordinates) operate on the product manifold
+    SO(2) x R2.  This means that:
 
       - retract(a, vec) != compose(a, from_tangent(vec))
 
       - local_coordinates(a, b) != to_tangent(between(a, b))
 
       - There is no hat operator, because from_tangent/to_tangent is not the matrix exp/log
+
+    If you need a type that has these properties in symbolic expressions, you should use Pose2_SE2.
+    There is no runtime equivalent of Pose2_SE2, see the docstring on that class for more
+    information.
     """
 
     __slots__ = ["data"]
@@ -49,12 +53,25 @@ class Pose2(object):
     # --------------------------------------------------------------------------
 
     def __init__(self, R=None, t=None):
-        # type: (Rot2, T.Sequence[float]) -> None
+        # type: (Rot2, T.Union[T.Sequence[float], numpy.ndarray]) -> None
         rotation = R if R is not None else Rot2()
-        position = t if t is not None else [0.0, 0.0]
-        assert isinstance(rotation, Rot2)
+        if t is None:
+            t = [0.0, 0.0]
+        if isinstance(t, numpy.ndarray):
+            if t.shape in [(2, 1), (1, 2)]:
+                t = t.flatten()
+            elif t.shape != (2,):
+                raise IndexError(
+                    "Expected t to be a vector of length 2; instead had shape {}".format(t.shape)
+                )
+        elif len(t) != 2:
+            raise IndexError(
+                "Expected t to be a sequence of length 2, was instead length {}.".format(len(t))
+            )
+        if not isinstance(rotation, Rot2):
+            raise ValueError("arg R has type {}; type {} expected".format(type(R), Rot2))
 
-        self.data = rotation.to_storage() + list(position)
+        self.data = rotation.to_storage() + list(t)
 
     @property
     def R(self):
@@ -109,9 +126,9 @@ class Pose2(object):
         # Intermediate terms (0)
 
         # Output terms
-        _res = numpy.zeros((2, 1))
-        _res[0, 0] = _self[2]
-        _res[1, 0] = _self[3]
+        _res = numpy.zeros(2)
+        _res[0] = _self[2]
+        _res[1] = _self[3]
         return _res
 
     def compose_with_point(self, right):
@@ -130,15 +147,21 @@ class Pose2(object):
 
         # Input arrays
         _self = self.data
-        if len(right.shape) == 1:
+        if right.shape == (2,):
             right = right.reshape((2, 1))
+        elif right.shape != (2, 1):
+            raise IndexError(
+                "right is expected to have shape (2, 1) or (2,); instead had shape {}".format(
+                    right.shape
+                )
+            )
 
         # Intermediate terms (0)
 
         # Output terms
-        _res = numpy.zeros((2, 1))
-        _res[0, 0] = _self[0] * right[0, 0] - _self[1] * right[1, 0] + _self[2]
-        _res[1, 0] = _self[0] * right[1, 0] + _self[1] * right[0, 0] + _self[3]
+        _res = numpy.zeros(2)
+        _res[0] = _self[0] * right[0, 0] - _self[1] * right[1, 0] + _self[2]
+        _res[1] = _self[0] * right[1, 0] + _self[1] * right[0, 0] + _self[3]
         return _res
 
     def inverse_compose(self, point):
@@ -159,20 +182,26 @@ class Pose2(object):
 
         # Input arrays
         _self = self.data
-        if len(point.shape) == 1:
+        if point.shape == (2,):
             point = point.reshape((2, 1))
+        elif point.shape != (2, 1):
+            raise IndexError(
+                "point is expected to have shape (2, 1) or (2,); instead had shape {}".format(
+                    point.shape
+                )
+            )
 
         # Intermediate terms (0)
 
         # Output terms
-        _res = numpy.zeros((2, 1))
-        _res[0, 0] = (
+        _res = numpy.zeros(2)
+        _res[0] = (
             -_self[0] * _self[2]
             + _self[0] * point[0, 0]
             - _self[1] * _self[3]
             + _self[1] * point[1, 0]
         )
-        _res[1, 0] = (
+        _res[1] = (
             -_self[0] * _self[3]
             + _self[0] * point[1, 0]
             + _self[1] * _self[2]
@@ -298,6 +327,10 @@ class Pose2(object):
         # type: (Pose2, float) -> numpy.ndarray
         return ops.LieGroupOps.local_coordinates(self, b, epsilon)
 
+    def interpolate(self, b, alpha, epsilon=1e-8):
+        # type: (Pose2, float, float) -> Pose2
+        return ops.LieGroupOps.interpolate(self, b, alpha, epsilon)
+
     # --------------------------------------------------------------------------
     # General Helpers
     # --------------------------------------------------------------------------
@@ -323,6 +356,6 @@ class Pose2(object):
         if isinstance(other, Pose2):
             return self.compose(other)
         elif isinstance(other, numpy.ndarray) and hasattr(self, "compose_with_point"):
-            return self.compose_with_point(other).reshape(other.shape)
+            return getattr(self, "compose_with_point")(other).reshape(other.shape)
         else:
             raise NotImplementedError("Cannot compose {} with {}.".format(type(self), type(other)))

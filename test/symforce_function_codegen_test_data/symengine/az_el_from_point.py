@@ -4,14 +4,14 @@
 # Do NOT modify by hand.
 # -----------------------------------------------------------------------------
 
-import math  # pylint: disable=unused-import
-import typing as T  # pylint: disable=unused-import
+# pylint: disable=too-many-locals,too-many-lines,too-many-statements,unused-argument,unused-import
 
-import numpy  # pylint: disable=unused-import
+import math
+import typing as T
 
-import sym  # pylint: disable=unused-import
+import numpy
 
-# pylint: disable=too-many-locals,too-many-lines,too-many-statements,unused-argument
+import sym
 
 
 def az_el_from_point(nav_T_cam, nav_t_point, epsilon):
@@ -33,8 +33,14 @@ def az_el_from_point(nav_T_cam, nav_t_point, epsilon):
 
     # Input arrays
     _nav_T_cam = nav_T_cam.data
-    if len(nav_t_point.shape) == 1:
+    if nav_t_point.shape == (3,):
         nav_t_point = nav_t_point.reshape((3, 1))
+    elif nav_t_point.shape != (3, 1):
+        raise IndexError(
+            "nav_t_point is expected to have shape (3, 1) or (3,); instead had shape {}".format(
+                nav_t_point.shape
+            )
+        )
 
     # Intermediate terms (23)
     _tmp0 = 2 * _nav_T_cam[0]
@@ -83,12 +89,12 @@ def az_el_from_point(nav_T_cam, nav_t_point, epsilon):
     )
 
     # Output terms
-    _res = numpy.zeros((2, 1))
-    _res[0, 0] = math.atan2(
+    _res = numpy.zeros(2)
+    _res[0] = math.atan2(
         _tmp11, _tmp18 + epsilon * ((0.0 if _tmp18 == 0 else math.copysign(1, _tmp18)) + 0.5)
     )
-    _res[1, 0] = (
-        -math.acos(_tmp22 / (epsilon + math.sqrt(_tmp11 ** 2 + _tmp18 ** 2 + _tmp22 ** 2)))
+    _res[1] = (
+        -math.acos(_tmp22 / math.sqrt(_tmp11 ** 2 + _tmp18 ** 2 + _tmp22 ** 2 + epsilon))
         + (1.0 / 2.0) * math.pi
     )
     return _res

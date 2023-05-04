@@ -120,6 +120,45 @@ def {{ function_name_and_args(spec) }}:
 
 {# ------------------------------------------------------------------------- #}
 
+{# Helper for expr_code. Checks that an input matrix called name has a valid shape,
+ # raises an IndexError if invalid, and reshapes to be a 2d ndarray.
+ #
+ # If use_numba=True, the IndexError message raised does not say what the size of the
+ # argument passed in was. This is because numba compatible code must have any error
+ # messages known at compile time. Similarly, the reshaping is always performed
+ # because numba compatible code cannot reshape an array in a conditional.
+ #
+ # Prints nothing if shape is not of the form (1, N) or (N, 1). This is because
+ # only row and column vectors might also be reasonably represented with (N,).
+ #
+ # Args:
+ #     name (str): The name of the array to be checked and resized. Should be a user
+ #       argument name, as it is used in the error message.
+ #     shape (T.Tuple[int, int]): The expected shape of name.
+ #     use_numba (bool): Whether the generated code should be numba compatible.
+ #}
+{% macro check_size_and_reshape(name, shape, use_numba) %}
+{% if 1 in shape %}
+    {% if use_numba %}
+    {# NOTE(brad): Numba will complain if we reshape name inside of a conditional #}
+if not ({{ name }}.shape == {{ shape }} or {{ name }}.shape == ({{ shape | max }},)):
+    raise IndexError("{{ name }} is expected to have shape {{ shape }} or ({{ shape | max }},)")
+{{ name }} = {{ name }}.reshape({{ shape }})
+    {% else %}
+if {{ name }}.shape == ({{ shape | max }},):
+    {{ name }} = {{ name }}.reshape({{ shape }})
+elif {{ name }}.shape != {{ shape }}:
+    raise IndexError(
+        "{{ name }} is expected to have shape {{ shape }} or ({{ shape | max }},); instead had shape {}".format(
+            {{ name }}.shape
+        )
+    )
+    {% endif %}
+{% endif %}
+{% endmacro %}
+
+{# ------------------------------------------------------------------------- #}
+
 {# Generate inner code for computing the given expression.
  #
  # Args:
@@ -134,16 +173,8 @@ def {{ function_name_and_args(spec) }}:
     {% for name, type in spec.inputs.items() %}
         {% set T = typing_util.get_type(type) %}
         {% if issubclass(T, Matrix) %}
-            {% if spec.config.reshape_vectors and (T.SHAPE[0] == 1 or T.SHAPE[1] == 1) %}
-                {% if spec.config.use_numba %}
-                {# NOTE(brad): Numba will complain if we reshape name inside of a conditional #}
-    if not ({{ name }}.shape == {{ T.SHAPE }} or {{ name }}.shape == ({{ T.SHAPE | max }},)):
-        raise IndexError("{{ name }} is expected to have shape {{ T.SHAPE }} or ({{ T.SHAPE | max }},)")
-    {{ name }} = {{ name }}.reshape({{ T.SHAPE }})
-                {% else %}
-    if len({{ name }}.shape) == 1:
-        {{ name }} = {{ name }}.reshape({{ T.SHAPE }})
-                {% endif %}
+            {% if spec.config.reshape_vectors %}
+    {{ check_size_and_reshape(name, T.SHAPE, spec.config.use_numba) | indent }}
             {% endif %}
         {% elif not issubclass(T, Values) and not is_symbolic(type) and not is_sequence(type) %}
     _{{ name }} = {{ name }}.data
@@ -160,19 +191,27 @@ def {{ function_name_and_args(spec) }}:
     {% for name, type, terms in spec.print_code_results.dense_terms %}
         {%- set T = typing_util.get_type(type) -%}
         {% if issubclass(T, Matrix) %}
-            {% set rows = type.shape[0] %}
-            {% set cols = type.shape[1] %}
-    _{{ name }} = numpy.zeros(({{ rows }}, {{ cols }}))
-            {% set ns = namespace(iter=0) %}
-            {# NOTE(brad): The order of the terms is the storage order of geo.Matrix. If the
-            storage order of geo.Matrix is changed (i.e., from column major to row major), the
-            following for loops will have to be changed to match that order. #}
-            {% for j in range(cols) %}
-                {% for i in range(rows) %}
-    _{{ name }}[{{ i }}, {{ j }}] = {{ terms[ns.iter][1] }}
-                    {% set ns.iter = ns.iter + 1 %}
+            {% if not spec.config.return_2d_vectors and 1 == (type.shape | min) %}
+                {% set size = type.shape | max %}
+    _{{ name }} = numpy.zeros({{ size }})
+                {% for i in range(size) %}
+    _{{ name }}[{{ i }}] = {{ terms[i][1] }}
                 {% endfor %}
-            {% endfor %}
+            {% else %}
+                {% set rows = type.shape[0] %}
+                {% set cols = type.shape[1] %}
+    _{{ name }} = numpy.zeros(({{ rows }}, {{ cols }}))
+                {% set ns = namespace(iter=0) %}
+                {# NOTE(brad): The order of the terms is the storage order of geo.Matrix. If the
+                storage order of geo.Matrix is changed (i.e., from column major to row major), the
+                following for loops will have to be changed to match that order. #}
+                {% for j in range(cols) %}
+                    {% for i in range(rows) %}
+    _{{ name }}[{{ i }}, {{ j }}] = {{ terms[ns.iter][1] }}
+                        {% set ns.iter = ns.iter + 1 %}
+                    {% endfor %}
+                {% endfor %}
+            {% endif %}
         {% elif not is_symbolic(type) %}
             {% set dims = ops.StorageOps.storage_dim(type) %}
     _{{name}} = [0.] * {{ dims }}
@@ -217,3 +256,27 @@ def {{ function_name_and_args(spec) }}:
         {%- if not loop.last %}, {% endif %}
     {%- endfor -%}
 {% endmacro %}
+
+{# ------------------------------------------------------------------------- #}
+
+{# Macro to flatten an array if it's an ndarray and is a vector. Also, raises
+ # a ValueError if the length is not equal to size and the shape is not that of
+ # a vector.
+ #
+ # Args:
+ #     array (str): The name of an sequence that might be an ndarray we wish to flatten
+ #     size (int): The expected size of the array
+ #}
+{% macro flatten_if_ndarray(array, size) %}
+if isinstance({{ array }}, numpy.ndarray):
+    if {{ array }}.shape in [({{ size }}, 1), (1, {{ size }})]:
+        {{ array }} = {{ array }}.flatten()
+    elif {{ array }}.shape != ({{ size }},):
+        raise IndexError("Expected {{ array }} to be a vector of length {{ size }}; instead had shape {}".format({{ array }}.shape))
+elif len({{ array }}) != {{ size }}:
+    raise IndexError(
+        "Expected {{ array }} to be a sequence of length {{ size }}, was instead length {}.".format(
+            len({{ array }})
+        )
+    )
+{%- endmacro %}

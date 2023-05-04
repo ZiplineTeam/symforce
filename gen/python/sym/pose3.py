@@ -49,12 +49,25 @@ class Pose3(object):
     # --------------------------------------------------------------------------
 
     def __init__(self, R=None, t=None):
-        # type: (Rot3, T.Sequence[float]) -> None
+        # type: (Rot3, T.Union[T.Sequence[float], numpy.ndarray]) -> None
         rotation = R if R is not None else Rot3()
-        position = t if t is not None else [0.0, 0.0, 0.0]
-        assert isinstance(rotation, Rot3)
+        if t is None:
+            t = [0.0, 0.0, 0.0]
+        if isinstance(t, numpy.ndarray):
+            if t.shape in [(3, 1), (1, 3)]:
+                t = t.flatten()
+            elif t.shape != (3,):
+                raise IndexError(
+                    "Expected t to be a vector of length 3; instead had shape {}".format(t.shape)
+                )
+        elif len(t) != 3:
+            raise IndexError(
+                "Expected t to be a sequence of length 3, was instead length {}.".format(len(t))
+            )
+        if not isinstance(rotation, Rot3):
+            raise ValueError("arg R has type {}; type {} expected".format(type(R), Rot3))
 
-        self.data = rotation.to_storage() + list(position)
+        self.data = rotation.to_storage() + list(t)
 
     @property
     def R(self):
@@ -111,10 +124,10 @@ class Pose3(object):
         # Intermediate terms (0)
 
         # Output terms
-        _res = numpy.zeros((3, 1))
-        _res[0, 0] = _self[4]
-        _res[1, 0] = _self[5]
-        _res[2, 0] = _self[6]
+        _res = numpy.zeros(3)
+        _res[0] = _self[4]
+        _res[1] = _self[5]
+        _res[2] = _self[6]
         return _res
 
     def compose_with_point(self, right):
@@ -127,8 +140,14 @@ class Pose3(object):
 
         # Input arrays
         _self = self.data
-        if len(right.shape) == 1:
+        if right.shape == (3,):
             right = right.reshape((3, 1))
+        elif right.shape != (3, 1):
+            raise IndexError(
+                "right is expected to have shape (3, 1) or (3,); instead had shape {}".format(
+                    right.shape
+                )
+            )
 
         # Intermediate terms (11)
         _tmp0 = 2 * _self[2]
@@ -144,20 +163,20 @@ class Pose3(object):
         _tmp10 = _self[1] * _tmp0
 
         # Output terms
-        _res = numpy.zeros((3, 1))
-        _res[0, 0] = (
+        _res = numpy.zeros(3)
+        _res[0] = (
             _self[4]
             + right[0, 0] * (_tmp3 + _tmp4)
             + right[1, 0] * (-_tmp1 + _tmp2)
             + right[2, 0] * (_tmp5 + _tmp7)
         )
-        _res[1, 0] = (
+        _res[1] = (
             _self[5]
             + right[0, 0] * (_tmp1 + _tmp2)
             + right[1, 0] * (_tmp4 + _tmp8)
             + right[2, 0] * (_tmp10 - _tmp9)
         )
-        _res[2, 0] = (
+        _res[2] = (
             _self[6]
             + right[0, 0] * (_tmp5 - _tmp7)
             + right[1, 0] * (_tmp10 + _tmp9)
@@ -183,8 +202,14 @@ class Pose3(object):
 
         # Input arrays
         _self = self.data
-        if len(point.shape) == 1:
+        if point.shape == (3,):
             point = point.reshape((3, 1))
+        elif point.shape != (3, 1):
+            raise IndexError(
+                "point is expected to have shape (3, 1) or (3,); instead had shape {}".format(
+                    point.shape
+                )
+            )
 
         # Intermediate terms (20)
         _tmp0 = 2 * _self[2]
@@ -209,8 +234,8 @@ class Pose3(object):
         _tmp19 = -_tmp14 + _tmp15
 
         # Output terms
-        _res = numpy.zeros((3, 1))
-        _res[0, 0] = (
+        _res = numpy.zeros(3)
+        _res[0] = (
             -_self[4] * _tmp6
             - _self[5] * _tmp3
             - _self[6] * _tmp10
@@ -218,7 +243,7 @@ class Pose3(object):
             + _tmp3 * point[1, 0]
             + _tmp6 * point[0, 0]
         )
-        _res[1, 0] = (
+        _res[1] = (
             -_self[4] * _tmp11
             - _self[5] * _tmp13
             - _self[6] * _tmp16
@@ -226,7 +251,7 @@ class Pose3(object):
             + _tmp13 * point[1, 0]
             + _tmp16 * point[2, 0]
         )
-        _res[2, 0] = (
+        _res[2] = (
             -_self[4] * _tmp18
             - _self[5] * _tmp19
             - _self[6] * _tmp17
@@ -369,6 +394,10 @@ class Pose3(object):
         # type: (Pose3, float) -> numpy.ndarray
         return ops.LieGroupOps.local_coordinates(self, b, epsilon)
 
+    def interpolate(self, b, alpha, epsilon=1e-8):
+        # type: (Pose3, float, float) -> Pose3
+        return ops.LieGroupOps.interpolate(self, b, alpha, epsilon)
+
     # --------------------------------------------------------------------------
     # General Helpers
     # --------------------------------------------------------------------------
@@ -394,6 +423,6 @@ class Pose3(object):
         if isinstance(other, Pose3):
             return self.compose(other)
         elif isinstance(other, numpy.ndarray) and hasattr(self, "compose_with_point"):
-            return self.compose_with_point(other).reshape(other.shape)
+            return getattr(self, "compose_with_point")(other).reshape(other.shape)
         else:
             raise NotImplementedError("Cannot compose {} with {}.".format(type(self), type(other)))

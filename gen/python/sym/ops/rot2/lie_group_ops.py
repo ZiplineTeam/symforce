@@ -24,8 +24,14 @@ class LieGroupOps(object):
         # Total ops: 2
 
         # Input arrays
-        if len(vec.shape) == 1:
+        if vec.shape == (1,):
             vec = vec.reshape((1, 1))
+        elif vec.shape != (1, 1):
+            raise IndexError(
+                "vec is expected to have shape (1, 1) or (1,); instead had shape {}".format(
+                    vec.shape
+                )
+            )
 
         # Intermediate terms (0)
 
@@ -47,8 +53,8 @@ class LieGroupOps(object):
         # Intermediate terms (0)
 
         # Output terms
-        _res = numpy.zeros((1, 1))
-        _res[0, 0] = math.atan2(
+        _res = numpy.zeros(1)
+        _res[0] = math.atan2(
             _a[1], _a[0] + epsilon * ((0.0 if _a[0] == 0 else math.copysign(1, _a[0])) + 0.5)
         )
         return _res
@@ -61,8 +67,14 @@ class LieGroupOps(object):
 
         # Input arrays
         _a = a.data
-        if len(vec.shape) == 1:
+        if vec.shape == (1,):
             vec = vec.reshape((1, 1))
+        elif vec.shape != (1, 1):
+            raise IndexError(
+                "vec is expected to have shape (1, 1) or (1,); instead had shape {}".format(
+                    vec.shape
+                )
+            )
 
         # Intermediate terms (2)
         _tmp0 = math.sin(vec[0, 0])
@@ -88,9 +100,34 @@ class LieGroupOps(object):
         _tmp0 = _a[0] * _b[0] + _a[1] * _b[1]
 
         # Output terms
-        _res = numpy.zeros((1, 1))
-        _res[0, 0] = math.atan2(
+        _res = numpy.zeros(1)
+        _res[0] = math.atan2(
             _a[0] * _b[1] - _a[1] * _b[0],
             _tmp0 + epsilon * ((0.0 if _tmp0 == 0 else math.copysign(1, _tmp0)) + 0.5),
         )
         return _res
+
+    @staticmethod
+    def interpolate(a, b, alpha, epsilon):
+        # type: (sym.Rot2, sym.Rot2, float, float) -> sym.Rot2
+
+        # Total ops: 20
+
+        # Input arrays
+        _a = a.data
+        _b = b.data
+
+        # Intermediate terms (4)
+        _tmp0 = _a[0] * _b[0] + _a[1] * _b[1]
+        _tmp1 = alpha * math.atan2(
+            _a[0] * _b[1] - _a[1] * _b[0],
+            _tmp0 + epsilon * ((0.0 if _tmp0 == 0 else math.copysign(1, _tmp0)) + 0.5),
+        )
+        _tmp2 = math.cos(_tmp1)
+        _tmp3 = math.sin(_tmp1)
+
+        # Output terms
+        _res = [0.0] * 2
+        _res[0] = _a[0] * _tmp2 - _a[1] * _tmp3
+        _res[1] = _a[0] * _tmp3 + _a[1] * _tmp2
+        return sym.Rot2.from_storage(_res)

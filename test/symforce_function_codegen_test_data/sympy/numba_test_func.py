@@ -4,15 +4,15 @@
 # Do NOT modify by hand.
 # -----------------------------------------------------------------------------
 
-import math  # pylint: disable=unused-import
-import typing as T  # pylint: disable=unused-import
+# pylint: disable=too-many-locals,too-many-lines,too-many-statements,unused-argument,unused-import
+
+import math
+import typing as T
 
 import numba
-import numpy  # pylint: disable=unused-import
+import numpy
 
-import sym  # pylint: disable=unused-import
-
-# pylint: disable=too-many-locals,too-many-lines,too-many-statements,unused-argument
+import sym
 
 
 @numba.njit
@@ -40,7 +40,7 @@ def numba_test_func(x):
     # Intermediate terms (0)
 
     # Output terms
-    _res = numpy.zeros((2, 1))
-    _res[0, 0] = x[0, 0]
-    _res[1, 0] = x[1, 0]
+    _res = numpy.zeros(2)
+    _res[0] = x[0, 0]
+    _res[1] = x[1, 0]
     return _res

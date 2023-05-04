@@ -6,15 +6,11 @@
 import copy
 import functools
 import importlib.util
-import logging
-import os
-import sys
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from numba.core.errors import TypingError
 from scipy import sparse
 
 import symforce
@@ -23,21 +19,21 @@ symforce.set_epsilon_to_symbol()
 
 import symforce.symbolic as sf
 from symforce import codegen
-from symforce import logger
 from symforce import ops
-from symforce import python_util
+from symforce import path_util
 from symforce import typing as T
 from symforce.codegen import codegen_util
 from symforce.codegen import geo_package_codegen
-from symforce.codegen import template_util
 from symforce.test_util import TestCase
 from symforce.test_util import slow_on_sympy
 from symforce.test_util import symengine_only
 from symforce.values import Values
 
-SYMFORCE_DIR = Path(__file__).parent.parent
 TEST_DATA_DIR = (
-    SYMFORCE_DIR / "test" / "symforce_function_codegen_test_data" / symforce.get_symbolic_api()
+    path_util.symforce_data_root()
+    / "test"
+    / "symforce_function_codegen_test_data"
+    / symforce.get_symbolic_api()
 )
 
 # Test function
@@ -59,7 +55,7 @@ def az_el_from_point(
     cam_t_point = nav_T_cam.inverse() * nav_t_point
     x, y, z = cam_t_point.to_flat_list()
     theta = sf.atan2(y, x, epsilon=epsilon)
-    phi = sf.pi / 2 - sf.acos(z / (cam_t_point.norm() + epsilon))
+    phi = sf.pi / 2 - sf.acos(z / cam_t_point.norm(epsilon=epsilon))
     return sf.V2(theta, phi)
 
 
@@ -160,14 +156,12 @@ class SymforceCodegenTest(TestCase):
             shared_types=shared_types, namespace=namespace, output_dir=output_dir
         )
         self.compare_or_update_directory(
-            actual_dir=output_dir, expected_dir=os.path.join(TEST_DATA_DIR, namespace + "_data")
+            actual_dir=output_dir, expected_dir=TEST_DATA_DIR / (namespace + "_data")
         )
 
         geo_package_codegen.generate(config=codegen.PythonConfig(), output_dir=output_dir)
 
-        geo_pkg = codegen_util.load_generated_package(
-            "sym", os.path.join(output_dir, "sym", "__init__.py")
-        )
+        geo_pkg = codegen_util.load_generated_package("sym", output_dir / "sym" / "__init__.py")
         values_vec_t = codegen_util.load_generated_lcmtype(
             namespace, "values_vec_t", codegen_data.python_types_dir
         )
@@ -202,7 +196,7 @@ class SymforceCodegenTest(TestCase):
 
         gen_module = codegen_util.load_generated_package(namespace, codegen_data.function_dir)
         # TODO(nathan): Split this test into several different functions
-        (foo, bar, scalar_vec_out, values_vec_out, values_vec_2D_out) = gen_module.python_function(
+        (foo, bar, _, _, _) = gen_module.python_function(
             x,
             y,
             rot,
@@ -248,10 +242,12 @@ class SymforceCodegenTest(TestCase):
         self.assertEqual(pkg.matrix_order().shape, m23.SHAPE)
         self.assertStorageNear(pkg.matrix_order(), m23)
 
+    @unittest.skipIf(importlib.util.find_spec("numba") is None, "Requires numba")
     def test_matrix_indexing_python(self) -> None:
         """
         Tests that matrices are indexed into correctly.
         """
+        from numba.core.errors import TypingError
 
         def pass_matrices(
             row: sf.M14, col: sf.M41, mat: sf.M22
@@ -266,7 +262,9 @@ class SymforceCodegenTest(TestCase):
             namespace = "test_indexing"
             generated_files = codegen.Codegen.function(
                 func=pass_matrices,
-                config=codegen.PythonConfig(use_numba=use_numba, reshape_vectors=reshape_vectors),
+                config=codegen.PythonConfig(
+                    use_numba=use_numba, reshape_vectors=reshape_vectors, return_2d_vectors=True
+                ),
                 output_names=["row_out", "col_out", "mat_out"],
             ).generate_function(namespace=namespace, output_dir=output_dir)
 
@@ -315,6 +313,38 @@ class SymforceCodegenTest(TestCase):
                     + f" [{use_numba=}] [{reshape_vectors=}]"
                 ):
                     assert_config_works(use_numba, reshape_vectors, row_shape, col_shape, mat_shape)
+
+        # ---------------------------------------------------------------------
+
+        row_shape = (1, 5)
+        col_shape = (4, 1)
+        mat_shape = (2, 2)
+
+        for use_numba in [False, True]:
+            reshape_vectors = True
+            with self.subTest(
+                msg="If reshape_vectors=True, row vectors which are too large raise IndexErrors"
+                + f" [{use_numba=}]"
+            ):
+                assert_config_works(
+                    use_numba, reshape_vectors, row_shape, col_shape, mat_shape, IndexError
+                )
+
+        # ---------------------------------------------------------------------
+
+        row_shape = (1, 4)
+        col_shape = (5, 1)
+        mat_shape = (2, 2)
+
+        for use_numba in [False, True]:
+            reshape_vectors = True
+            with self.subTest(
+                msg="If reshape_vectors=True, column vectors which are too large raise IndexErrors"
+                + f" [{use_numba=}]"
+            ):
+                assert_config_works(
+                    use_numba, reshape_vectors, row_shape, col_shape, mat_shape, IndexError
+                )
 
         # ---------------------------------------------------------------------
 
@@ -464,6 +494,45 @@ class SymforceCodegenTest(TestCase):
                 use_numba, reshape_vectors, row_shape, col_shape, mat_shape, TypingError
             )
 
+    def test_python_config_return_2d_vectors(self) -> None:
+        """
+        Tests that if PythonConfig.return_2d_vectors is True, then all matrix outputs are 2d ndarrays,
+        and that otherwise a 1d ndarray is used one of its columns or rows has length 1.
+        """
+
+        def get_row_col_mat() -> T.Tuple[sf.M14, sf.M41, sf.M22]:
+            return sf.M14.zero(), sf.M41.zero(), sf.M22.zero()
+
+        def generated_function(return_2d_vectors: bool) -> T.Any:
+            output_dir = self.make_output_dir(
+                f"sf_test_python_config_return_2d_vectors_{return_2d_vectors}"
+            )
+            namespace = f"python_config_return_2d_vectors_{return_2d_vectors}"
+
+            codegen_data = codegen.Codegen.function(
+                func=get_row_col_mat,
+                config=codegen.PythonConfig(return_2d_vectors=return_2d_vectors),
+                output_names=["row_out", "col_out", "mat_out"],
+            ).generate_function(namespace=namespace, output_dir=output_dir)
+
+            gen = codegen_util.load_generated_package(namespace, codegen_data.function_dir)
+
+            return gen.get_row_col_mat
+
+        with self.subTest("All matrix outputs are 2d if return_2d_vectors=True"):
+            row, col, mat = generated_function(return_2d_vectors=True)()
+
+            self.assertEqual((1, 4), row.shape)
+            self.assertEqual((4, 1), col.shape)
+            self.assertEqual((2, 2), mat.shape)
+
+        with self.subTest("Only vector outputs are 1d if return_2d_vectors=False"):
+            row, col, mat = generated_function(return_2d_vectors=False)()
+
+            self.assertEqual((4,), row.shape)
+            self.assertEqual((4,), col.shape)
+            self.assertEqual((2, 2), mat.shape)
+
     def test_sparse_output_python(self) -> None:
         """
         Tests that sparse matrices are correctly generated in python when sparse_matrices
@@ -503,7 +572,7 @@ class SymforceCodegenTest(TestCase):
         az_el_codegen_data = az_el_codegen.generate_function(output_dir)
 
         # Compare to expected
-        expected_code_file = os.path.join(TEST_DATA_DIR, "az_el_from_point.py")
+        expected_code_file = TEST_DATA_DIR / "az_el_from_point.py"
         output_function = az_el_codegen_data.function_dir / "az_el_from_point.py"
         self.compare_or_update_file(expected_code_file, output_function)
 
@@ -521,7 +590,7 @@ class SymforceCodegenTest(TestCase):
         numba_test_func_codegen_data = numba_test_func_codegen.generate_function(output_dir)
 
         # Compare to expected
-        expected_code_file = os.path.join(TEST_DATA_DIR, "numba_test_func.py")
+        expected_code_file = TEST_DATA_DIR / "numba_test_func.py"
         output_function = numba_test_func_codegen_data.function_dir / "numba_test_func.py"
         self.compare_or_update_file(expected_code_file, output_function)
 
@@ -531,7 +600,7 @@ class SymforceCodegenTest(TestCase):
 
         x = np.array([1, 2, 3])
         y = gen_module.numba_test_func(x)
-        self.assertTrue((y == np.array([[1, 2]]).T).all())
+        self.assertTrue((y == np.array([1, 2])).all())
         self.assertTrue(hasattr(gen_module.numba_test_func, "__numba__"))
 
     # -------------------------------------------------------------------------
@@ -554,13 +623,13 @@ class SymforceCodegenTest(TestCase):
         }
         namespace = "codegen_cpp_test"
         output_dir = self.make_output_dir("sf_codegen_cpp_")
-        codegen_data = cpp_func.generate_function(
+        cpp_func.generate_function(
             shared_types=shared_types, namespace=namespace, output_dir=output_dir
         )
 
         self.compare_or_update_directory(
-            actual_dir=os.path.join(output_dir),
-            expected_dir=os.path.join(TEST_DATA_DIR, namespace + "_data"),
+            actual_dir=output_dir,
+            expected_dir=TEST_DATA_DIR / (namespace + "_data"),
         )
 
     def test_function_codegen_cpp(self) -> None:
@@ -571,7 +640,7 @@ class SymforceCodegenTest(TestCase):
         az_el_codegen_data = az_el_codegen.generate_function(output_dir=output_dir)
 
         # Compare to expected
-        expected_code_file = os.path.join(TEST_DATA_DIR, "az_el_from_point.h")
+        expected_code_file = TEST_DATA_DIR / "az_el_from_point.h"
         output_function = az_el_codegen_data.function_dir / "az_el_from_point.h"
         self.compare_or_update_file(expected_code_file, output_function)
 
@@ -598,7 +667,7 @@ class SymforceCodegenTest(TestCase):
         # Compare the function file
         self.compare_or_update_directory(
             actual_dir=codegen_data.output_dir,
-            expected_dir=os.path.join(TEST_DATA_DIR, namespace + "_data"),
+            expected_dir=TEST_DATA_DIR / (namespace + "_data"),
         )
 
     @slow_on_sympy
@@ -639,7 +708,7 @@ class SymforceCodegenTest(TestCase):
 
         # Compare the generated types
         self.compare_or_update_directory(
-            output_dir, expected_dir=os.path.join(TEST_DATA_DIR, namespace + "_data")
+            output_dir, expected_dir=TEST_DATA_DIR / (namespace + "_data")
         )
 
     @slow_on_sympy
@@ -671,9 +740,7 @@ class SymforceCodegenTest(TestCase):
             config=codegen.CppConfig(),
             sparse_matrices=["matrix_out"],
         )
-        get_sparse_func_data = get_sparse_func.generate_function(
-            output_dir=output_dir, namespace=namespace
-        )
+        get_sparse_func.generate_function(output_dir=output_dir, namespace=namespace)
 
         # Function that generates both dense and sparse outputs
         multiple_outputs = Values()
@@ -690,25 +757,29 @@ class SymforceCodegenTest(TestCase):
             config=codegen.CppConfig(),
             sparse_matrices=["sparse_first", "sparse_second"],
         )
-        get_dense_and_sparse_func_data = get_dense_and_sparse_func.generate_function(
-            output_dir=output_dir, namespace=namespace
-        )
+        get_dense_and_sparse_func.generate_function(output_dir=output_dir, namespace=namespace)
 
         # Function that updates sparse matrix without copying
-        update_spase_func = codegen.Codegen(
+        update_sparse_func = codegen.Codegen(
             name="update_sparse_mat",
             inputs=inputs,
             outputs=Values(updated_mat=2 * outputs["matrix_out"]),
             config=codegen.CppConfig(),
             sparse_matrices=["updated_mat"],
         )
-        update_spase_func_data = update_spase_func.generate_function(
-            output_dir=output_dir, namespace=namespace
-        )
+        update_sparse_func.generate_function(output_dir=output_dir, namespace=namespace)
+
+        # Test the Codegen.function factory
+        def sparse_func(x: sf.V3) -> sf.M33:
+            return sf.M33.diag(x.to_flat_list())
+
+        codegen.Codegen.function(
+            sparse_func, config=codegen.CppConfig(), output_names=("M",), sparse_matrices=("M",)
+        ).generate_function(output_dir=output_dir, namespace=namespace)
 
         # Compare the function files
         self.compare_or_update_directory(
-            output_dir, expected_dir=os.path.join(TEST_DATA_DIR, namespace + "_data")
+            output_dir, expected_dir=TEST_DATA_DIR / (namespace + "_data")
         )
 
     def test_invalid_codegen_raises(self) -> None:
@@ -716,6 +787,8 @@ class SymforceCodegenTest(TestCase):
         Tests:
             Codegen outputs must be a function of given inputs
             Codegen input/output names must be valid variable names
+            Codegen namespace must be a valid identifier
+            Codegen name must be a valid identifier
         """
         # Outputs have symbols not present in inputs
         x = sf.Symbol("x")
@@ -737,6 +810,19 @@ class SymforceCodegenTest(TestCase):
         self.assertRaises(
             AssertionError, codegen.Codegen, inputs, outputs, codegen.CppConfig(), "test"
         )
+
+        valid_codegen = codegen.Codegen(Values(x=x), Values(y=x), codegen.CppConfig(), "test")
+        with self.assertRaises(codegen.InvalidNamespaceError):
+            valid_codegen.generate_function(namespace="nested.namespace")
+        with self.assertRaises(codegen.InvalidNamespaceError):
+            valid_codegen.generate_function(namespace="nested::namespace")
+        with self.assertRaises(codegen.InvalidNamespaceError):
+            valid_codegen.generate_function(namespace="non identifier namespace")
+
+        for invalid_name in ["my_func.blah", "my_func:blah", "1my_func", "my func"]:
+            with self.assertRaises(codegen.InvalidNameError):
+                valid_codegen.name = invalid_name
+                valid_codegen.generate_function()
 
     def test_name_deduction(self) -> None:
         """
@@ -818,13 +904,11 @@ class SymforceCodegenTest(TestCase):
         for codegen_function in codegens.values():
             codegen_function.generate_function(output_dir=output_dir)
 
-        self.assertEqual(
-            len(os.listdir(os.path.join(output_dir, "cpp/symforce/sym"))), len(codegens)
-        )
+        self.assertEqual(len(list((output_dir / "cpp/symforce/sym").iterdir())), len(codegens))
 
         self.compare_or_update_directory(
-            actual_dir=os.path.join(output_dir, "cpp/symforce/sym"),
-            expected_dir=os.path.join(TEST_DATA_DIR, "with_jacobians"),
+            actual_dir=output_dir / "cpp/symforce/sym",
+            expected_dir=TEST_DATA_DIR / "with_jacobians",
         )
 
     def test_with_jacobians_values(self) -> None:
@@ -843,7 +927,7 @@ class SymforceCodegenTest(TestCase):
 
         outputs = Values(
             a_out=inputs.attr.a * sf.V3(0, 0, inputs.attr.b),
-            b_out=inputs.attr.c.norm() + inputs.attr.b ** 2,
+            b_out=inputs.attr.c.norm(epsilon=0) + inputs.attr.b ** 2,
             c_out=(inputs.attr.d.x * sf.V2(1, 1) + inputs.attr.d.y).T * sf.M22(((1, 2), (3, 4))),
             d_out=Values(x=3, y=inputs.attr.a.q.w + inputs.attr.b),
         )
@@ -887,7 +971,7 @@ class SymforceCodegenTest(TestCase):
         specs_first: T.List[T.Dict[str, T.Any]] = [
             # By default should return the value and have jacobians for the first output (cross) wrt
             # each input arg
-            dict(args=dict(), return_key="cross", outputs=5),
+            dict(args={}, return_key="cross", outputs=5),
             # All jacobians for first output, no value - should return distance and jacobians for
             # cross as output args
             dict(args=dict(include_results=False), return_key=None, outputs=4),
@@ -909,7 +993,7 @@ class SymforceCodegenTest(TestCase):
         specs_second: T.List[T.Dict[str, T.Any]] = [
             # Should return the value and have jacobians for the second output (distance) wrt each
             # input arg
-            dict(args=dict(), return_key="cross", outputs=5),
+            dict(args={}, return_key="cross", outputs=5),
             # All jacobians for second output, no value - should return cross, and jacobians for
             # distance as output args
             dict(args=dict(include_results=False), return_key="cross", outputs=4),
@@ -930,7 +1014,7 @@ class SymforceCodegenTest(TestCase):
         # -------------------------------------------------------------------
         specs_both: T.List[T.Dict[str, T.Any]] = [
             # Should return the value and have jacobians for both outputs wrt each input arg
-            dict(args=dict(), return_key="cross", outputs=8),
+            dict(args={}, return_key="cross", outputs=8),
             # All jacobians for both outputs, no values - should return jacobians as output args
             dict(args=dict(include_results=False), return_key=None, outputs=6),
             # First jacobian for both outputs, no values - should return jacobians as output args
@@ -974,11 +1058,11 @@ class SymforceCodegenTest(TestCase):
 
                 curr_codegen.generate_function(output_dir=output_dir)
 
-        self.assertEqual(len(os.listdir(os.path.join(output_dir, "cpp/symforce/sym"))), len(specs))
+        self.assertEqual(len(list((output_dir / "cpp/symforce/sym").iterdir())), len(specs))
 
         self.compare_or_update_directory(
-            actual_dir=os.path.join(output_dir, "cpp/symforce/sym"),
-            expected_dir=os.path.join(TEST_DATA_DIR, "with_jacobians_multiple_outputs"),
+            actual_dir=output_dir / "cpp/symforce/sym",
+            expected_dir=TEST_DATA_DIR / "with_jacobians_multiple_outputs",
         )
 
     def test_matrix_order_cpp(self) -> None:
@@ -1033,8 +1117,8 @@ class SymforceCodegenTest(TestCase):
             v1: sf.V3
             v2: TestDataclass0
 
-        def test_function_dataclass(dataclass: TestDataclass1, x: sf.Scalar) -> sf.V3:
-            return x * dataclass.v2.v0 * dataclass.v1
+        def test_function_dataclass(d: TestDataclass1, x: sf.Scalar) -> sf.V3:
+            return x * d.v2.v0 * d.v1
 
         dataclass_codegen = codegen.Codegen.function(
             func=test_function_dataclass, config=codegen.PythonConfig()
@@ -1044,14 +1128,16 @@ class SymforceCodegenTest(TestCase):
             "test_function_dataclass", dataclass_codegen_data.function_dir
         )
 
-        dataclass_t = codegen_util.load_generated_lcmtype(
-            "sym", "dataclass_t", dataclass_codegen_data.python_types_dir
+        d = codegen_util.load_generated_lcmtype(
+            "sym", "d_t", dataclass_codegen_data.python_types_dir
         )()
-        dataclass_t.v1.data = np.zeros(3)
-        dataclass_t.v2.v0 = 1
+        d.v1.data = np.zeros(3)
+        d.v2.v0 = 1
 
         # make sure it runs
-        gen_module.test_function_dataclass(dataclass_t, 1)
+        result = gen_module.test_function_dataclass(d, 1)
+
+        self.assertEqual(result, np.zeros(3))
 
     @slow_on_sympy
     def test_function_explicit_template_instantiation(self) -> None:
@@ -1070,8 +1156,8 @@ class SymforceCodegenTest(TestCase):
             "values_vec_2D_out": "values_vec_t",
         }
         namespace = "codegen_explicit_template_instantiation_test"
-        output_dir = Path(self.make_output_dir("sf_codegen_cpp_"))
-        codegen_data = cpp_func.generate_function(
+        output_dir = self.make_output_dir("sf_codegen_cpp_")
+        cpp_func.generate_function(
             shared_types=shared_types, namespace=namespace, output_dir=output_dir
         )
 
@@ -1093,7 +1179,7 @@ class SymforceCodegenTest(TestCase):
         inputs = Values(my_dataclass=MyDataclass(rot=sym_rot))
         outputs = Values(rot=sym_rot)
 
-        output_dir = Path(self.make_output_dir("sf_codegen_dataclass_"))
+        output_dir = self.make_output_dir("sf_codegen_dataclass_")
         name = "codegen_dataclass_in_values_test"
         namespace = "codegen_test"
 

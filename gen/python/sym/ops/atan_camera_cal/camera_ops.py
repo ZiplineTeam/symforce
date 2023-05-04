@@ -32,9 +32,9 @@ class CameraOps(object):
         # Intermediate terms (0)
 
         # Output terms
-        _focal_length = numpy.zeros((2, 1))
-        _focal_length[0, 0] = _self[0]
-        _focal_length[1, 0] = _self[1]
+        _focal_length = numpy.zeros(2)
+        _focal_length[0] = _self[0]
+        _focal_length[1] = _self[1]
         return _focal_length
 
     @staticmethod
@@ -52,9 +52,9 @@ class CameraOps(object):
         # Intermediate terms (0)
 
         # Output terms
-        _principal_point = numpy.zeros((2, 1))
-        _principal_point[0, 0] = _self[2]
-        _principal_point[1, 0] = _self[3]
+        _principal_point = numpy.zeros(2)
+        _principal_point[0] = _self[2]
+        _principal_point[1] = _self[3]
         return _principal_point
 
     @staticmethod
@@ -72,8 +72,14 @@ class CameraOps(object):
 
         # Input arrays
         _self = self.data
-        if len(point.shape) == 1:
+        if point.shape == (3,):
             point = point.reshape((3, 1))
+        elif point.shape != (3, 1):
+            raise IndexError(
+                "point is expected to have shape (3, 1) or (3,); instead had shape {}".format(
+                    point.shape
+                )
+            )
 
         # Intermediate terms (4)
         _tmp0 = max(epsilon, point[2, 0])
@@ -82,9 +88,9 @@ class CameraOps(object):
         _tmp3 = math.atan(2 * _tmp2 * math.tan(0.5 * _self[4])) / (_self[4] * _tmp0 * _tmp2)
 
         # Output terms
-        _pixel = numpy.zeros((2, 1))
-        _pixel[0, 0] = _self[0] * _tmp3 * point[0, 0] + _self[2]
-        _pixel[1, 0] = _self[1] * _tmp3 * point[1, 0] + _self[3]
+        _pixel = numpy.zeros(2)
+        _pixel[0] = _self[0] * _tmp3 * point[0, 0] + _self[2]
+        _pixel[1] = _self[1] * _tmp3 * point[1, 0] + _self[3]
         _is_valid = max(0, (0.0 if point[2, 0] == 0 else math.copysign(1, point[2, 0])))
         return _pixel, _is_valid
 
@@ -105,8 +111,14 @@ class CameraOps(object):
 
         # Input arrays
         _self = self.data
-        if len(point.shape) == 1:
+        if point.shape == (3,):
             point = point.reshape((3, 1))
+        elif point.shape != (3, 1):
+            raise IndexError(
+                "point is expected to have shape (3, 1) or (3,); instead had shape {}".format(
+                    point.shape
+                )
+            )
 
         # Intermediate terms (46)
         _tmp0 = 0.5 * _self[4]
@@ -159,9 +171,9 @@ class CameraOps(object):
         _tmp45 = (1.0 / 2.0) * _tmp11 * _tmp4 * _tmp40 * _tmp9
 
         # Output terms
-        _pixel = numpy.zeros((2, 1))
-        _pixel[0, 0] = _self[2] + _tmp16 * point[0, 0]
-        _pixel[1, 0] = _self[3] + _tmp17 * point[1, 0]
+        _pixel = numpy.zeros(2)
+        _pixel[0] = _self[2] + _tmp16 * point[0, 0]
+        _pixel[1] = _self[3] + _tmp17 * point[1, 0]
         _is_valid = max(0, (0.0 if point[2, 0] == 0 else math.copysign(1, point[2, 0])))
         _pixel_D_cal = numpy.zeros((2, 5))
         _pixel_D_cal[0, 0] = _tmp20 * point[0, 0]
@@ -200,8 +212,14 @@ class CameraOps(object):
 
         # Input arrays
         _self = self.data
-        if len(pixel.shape) == 1:
+        if pixel.shape == (2,):
             pixel = pixel.reshape((2, 1))
+        elif pixel.shape != (2, 1):
+            raise IndexError(
+                "pixel is expected to have shape (2, 1) or (2,); instead had shape {}".format(
+                    pixel.shape
+                )
+            )
 
         # Intermediate terms (5)
         _tmp0 = -_self[2] + pixel[0, 0]
@@ -211,10 +229,10 @@ class CameraOps(object):
         _tmp4 = (1.0 / 2.0) * math.tan(_tmp3) / (_tmp2 * math.tan(0.5 * _self[4]))
 
         # Output terms
-        _camera_ray = numpy.zeros((3, 1))
-        _camera_ray[0, 0] = _tmp0 * _tmp4 / _self[0]
-        _camera_ray[1, 0] = _tmp1 * _tmp4 / _self[1]
-        _camera_ray[2, 0] = 1
+        _camera_ray = numpy.zeros(3)
+        _camera_ray[0] = _tmp0 * _tmp4 / _self[0]
+        _camera_ray[1] = _tmp1 * _tmp4 / _self[1]
+        _camera_ray[2] = 1
         _is_valid = max(
             0,
             (
@@ -242,8 +260,14 @@ class CameraOps(object):
 
         # Input arrays
         _self = self.data
-        if len(pixel.shape) == 1:
+        if pixel.shape == (2,):
             pixel = pixel.reshape((2, 1))
+        elif pixel.shape != (2, 1):
+            raise IndexError(
+                "pixel is expected to have shape (2, 1) or (2,); instead had shape {}".format(
+                    pixel.shape
+                )
+            )
 
         # Intermediate terms (54)
         _tmp0 = -_self[2] + pixel[0, 0]
@@ -302,10 +326,10 @@ class CameraOps(object):
         _tmp53 = _tmp0 * _tmp15 * _tmp46
 
         # Output terms
-        _camera_ray = numpy.zeros((3, 1))
-        _camera_ray[0, 0] = _tmp0 * _tmp16
-        _camera_ray[1, 0] = _tmp19 * _tmp20
-        _camera_ray[2, 0] = 1
+        _camera_ray = numpy.zeros(3)
+        _camera_ray[0] = _tmp0 * _tmp16
+        _camera_ray[1] = _tmp19 * _tmp20
+        _camera_ray[2] = 1
         _is_valid = max(
             0,
             (

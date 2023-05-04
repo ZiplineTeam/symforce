@@ -25,7 +25,6 @@ available as well as `symforce.symbolic.sympy`.
 
 # pylint: disable=unused-import
 # pylint: disable=unused-wildcard-import
-# pylint: disable=ungrouped-imports
 
 import contextlib
 
@@ -442,6 +441,21 @@ def asin_safe(x: Scalar, epsilon: Scalar = epsilon()) -> Scalar:
 def acos_safe(x: Scalar, epsilon: Scalar = epsilon()) -> Scalar:
     x_safe = Max(-1 + epsilon, Min(1 - epsilon, x))
     return sympy.acos(x_safe)
+
+
+def clamp(x: sf.Scalar, min_value: sf.Scalar, max_value: sf.Scalar) -> sf.Scalar:
+    """
+    Returns min_value if x < min_value
+    Returns x if min_value < x < max_value
+    Returns max_value if x > max_value
+
+    Args:
+        x: Value to clamp between min_value and max_value
+        min_value: Scalar of same type and units as x; minimum value to return
+        max_value: Scalar of same type and units as x; maximum value to return. Must be greater
+            than min_value.
+    """
+    return sf.Min(max_value, sf.Max(min_value, x))
 
 
 def set_eval_on_sympify(eval_on_sympy: bool = True) -> None:

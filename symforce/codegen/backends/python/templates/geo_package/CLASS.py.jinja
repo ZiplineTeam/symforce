@@ -151,6 +151,10 @@ class {{ cls.__name__ }}(object):
     def local_coordinates(self, b, epsilon=1e-8):
         # type: ({{ cls.__name__ }}, float) -> numpy.ndarray
         return ops.LieGroupOps.local_coordinates(self, b, epsilon)
+
+    def interpolate(self, b, alpha, epsilon=1e-8):
+        # type: ({{ cls.__name__ }}, float, float) -> {{ cls.__name__ }}
+        return ops.LieGroupOps.interpolate(self, b, alpha, epsilon)
     {% endif %}
 
     # --------------------------------------------------------------------------
@@ -178,6 +182,6 @@ class {{ cls.__name__ }}(object):
         if isinstance(other, {{ cls.__name__ }}):
             return self.compose(other)
         elif isinstance(other, numpy.ndarray) and hasattr(self, "compose_with_point"):
-            return self.compose_with_point(other).reshape(other.shape)
+            return getattr(self, "compose_with_point")(other).reshape(other.shape)
         else:
             raise NotImplementedError('Cannot compose {} with {}.'.format(type(self), type(other)))

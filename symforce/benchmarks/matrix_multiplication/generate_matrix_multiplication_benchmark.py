@@ -12,6 +12,7 @@ import scipy.io
 
 import symforce.symbolic as sf
 from symforce import codegen
+from symforce import logger
 from symforce import python_util
 from symforce import typing as T
 from symforce.codegen import template_util
@@ -116,7 +117,8 @@ def generate_matrix(
 
     # These files are large enough that autoformatting them is very slow, so just don't do it
     config = codegen.CppConfig(
-        cse_optimizations=[(cse_opts.sub_pre, cse_opts.sub_post)], autoformat=False
+        cse_optimizations=[(cse_opts.sub_pre, cse_opts.sub_post)],
+        render_template_config=codegen.RenderTemplateConfig(autoformat=False),
     )
     config_noinline = dataclasses.replace(config, force_no_inline=True)
 
@@ -202,6 +204,7 @@ def generate_matrix(
             n_symbols=N_SYMBOLS,
             cant_allocate_on_stack=cant_allocate_on_stack,
         ),
+        config=codegen.RenderTemplateConfig(),
         output_path=output_dir / f"matrix_multiplication_benchmark_{matrix_name}.cc",
     )
 
@@ -210,5 +213,5 @@ def generate(output_dir: Path) -> None:
     np.random.seed(42)
 
     for i, (matrix_name, _filename, matrix) in enumerate(get_matrices()):
-        print(f"Generating matrix {matrix_name}")
+        logger.debug(f"Generating matrix {matrix_name}")
         generate_matrix(output_dir, matrix_name, matrix, symforce_result_is_sparse=i > 2, i=i)

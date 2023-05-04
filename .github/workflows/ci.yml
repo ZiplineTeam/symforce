@@ -5,22 +5,53 @@ on:
     branches:
       - 'main'
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 jobs:
   test-on-ubuntu:
+    if: github.event.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-18.04, ubuntu-20.04]
-        python: [python3.8, python3.9, python3.10]
-        compiler: [
-          {C: gcc-5, CXX: g++-5, repos: [
-            '"deb http://us.archive.ubuntu.com/ubuntu/ xenial main"',
-            '"deb http://us.archive.ubuntu.com/ubuntu/ xenial universe"',
-          ]},
-          {C: gcc-11, CXX: g++-11, repos: ['"ppa:ubuntu-toolchain-r/test"']}]
+        os: [ubuntu-18.04, ubuntu-20.04, ubuntu-22.04]
+        python: [python3.8, python3.9, python3.10, python3.11]
+        compiler:
+          - C: gcc-11
+            CXX: g++-11
+            repos: ['"ppa:ubuntu-toolchain-r/test"']
+        exclude:
+          # NOTE(brad): No available pre-built wheel for lazy-object-proxy==1.9.0 for this
+          # combination. Local-build fails on pip 23.0.0, so we skip the test. Root cause of issue
+          # seems to come from https://github.com/pypa/pip/pull/11598, as
+          # sysconfig.get_paths(vars=vars, scheme="venv") gives the wrong paths. To build anyway,
+          # either modify pip to not take "venv" path, or just use pip 22.3.1 (version before this
+          # was added).
+          - os: ubuntu-18.04
+            python: python3.11
+        include:
+          # gcc 5
+          - os: ubuntu-18.04
+            python: python3.8
+            compiler:
+              C: gcc-5
+              CXX: g++-5
+              repos: []
+          # Clang 7
+          - os: ubuntu-18.04
+            python: python3.8
+            compiler:
+              C: clang-7
+              CXX: clang++-7
+              repos: []
+          # Clang 14
+          - os: ubuntu-22.04
+            python: python3.10
+            compiler:
+              C: clang-14
+              CXX: clang++-14
+              repos: []
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -47,7 +78,10 @@ jobs:
       - name: Install python
         run: |
           sudo add-apt-repository -y ppa:deadsnakes/ppa
-          sudo apt-get install -y ${{ matrix.python }}-dev ${{ matrix.python }}-distutils
+          sudo apt-get install -y \
+            ${{ matrix.python }}-dev \
+            ${{ matrix.python }}-distutils \
+            ${{ matrix.python }}-venv
           curl https://bootstrap.pypa.io/get-pip.py | ${{ matrix.python }}
           pip install --upgrade setuptools
 
@@ -57,6 +91,14 @@ jobs:
               doxygen \
               libgmp-dev \
               pandoc
+
+      # NOTE(brad): libunwind-dev is a broken dependency of libgoogle-glog-dev, itself
+      # a dependency of ceres. Without this step on jammy, apt-get install libgoogle-glog-dev
+      # would fail. If this step could be removed and still have the build succeed, it should.
+      - name: Fix libunwind-dev install on jammy
+        if: ${{ matrix.os == 'ubuntu-22.04' }}
+        run: |
+          sudo apt-get install -yf libunwind-dev
 
       - name: Install build dependencies for SymForce benchmarks
         run: |
@@ -95,8 +137,11 @@ jobs:
           pip install build/lcmtypes/python2.7
           export PYTHONPATH=$PYTHONPATH:$(pwd)
           ${{ matrix.python }} test/symforce_requirements_test.py --update
-          ctest --test-dir build -j $(nproc) || true
-          ctest --test-dir build -j $(nproc) --rerun-failed --output-on-failure
+          EXIT_CODE=0
+          ctest --test-dir build -j $(nproc) || EXIT_CODE=$?
+          if [ $EXIT_CODE -ne 0 ]; then
+            ctest --test-dir build -j $(nproc) --rerun-failed --output-on-failure
+          fi
 
       # Upload the docs as an artifact
       # To view, download the `docs` artifact from the build and matrix entry you're interested in

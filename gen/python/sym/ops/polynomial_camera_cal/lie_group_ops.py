@@ -24,8 +24,14 @@ class LieGroupOps(object):
         # Total ops: 0
 
         # Input arrays
-        if len(vec.shape) == 1:
+        if vec.shape == (8,):
             vec = vec.reshape((8, 1))
+        elif vec.shape != (8, 1):
+            raise IndexError(
+                "vec is expected to have shape (8, 1) or (8,); instead had shape {}".format(
+                    vec.shape
+                )
+            )
 
         # Intermediate terms (0)
 
@@ -53,15 +59,15 @@ class LieGroupOps(object):
         # Intermediate terms (0)
 
         # Output terms
-        _res = numpy.zeros((8, 1))
-        _res[0, 0] = _a[0]
-        _res[1, 0] = _a[1]
-        _res[2, 0] = _a[2]
-        _res[3, 0] = _a[3]
-        _res[4, 0] = _a[4]
-        _res[5, 0] = _a[5]
-        _res[6, 0] = _a[6]
-        _res[7, 0] = _a[7]
+        _res = numpy.zeros(8)
+        _res[0] = _a[0]
+        _res[1] = _a[1]
+        _res[2] = _a[2]
+        _res[3] = _a[3]
+        _res[4] = _a[4]
+        _res[5] = _a[5]
+        _res[6] = _a[6]
+        _res[7] = _a[7]
         return _res
 
     @staticmethod
@@ -72,8 +78,14 @@ class LieGroupOps(object):
 
         # Input arrays
         _a = a.data
-        if len(vec.shape) == 1:
+        if vec.shape == (8,):
             vec = vec.reshape((8, 1))
+        elif vec.shape != (8, 1):
+            raise IndexError(
+                "vec is expected to have shape (8, 1) or (8,); instead had shape {}".format(
+                    vec.shape
+                )
+            )
 
         # Intermediate terms (0)
 
@@ -102,13 +114,37 @@ class LieGroupOps(object):
         # Intermediate terms (0)
 
         # Output terms
-        _res = numpy.zeros((8, 1))
-        _res[0, 0] = -_a[0] + _b[0]
-        _res[1, 0] = -_a[1] + _b[1]
-        _res[2, 0] = -_a[2] + _b[2]
-        _res[3, 0] = -_a[3] + _b[3]
-        _res[4, 0] = -_a[4] + _b[4]
-        _res[5, 0] = -_a[5] + _b[5]
-        _res[6, 0] = -_a[6] + _b[6]
-        _res[7, 0] = -_a[7] + _b[7]
+        _res = numpy.zeros(8)
+        _res[0] = -_a[0] + _b[0]
+        _res[1] = -_a[1] + _b[1]
+        _res[2] = -_a[2] + _b[2]
+        _res[3] = -_a[3] + _b[3]
+        _res[4] = -_a[4] + _b[4]
+        _res[5] = -_a[5] + _b[5]
+        _res[6] = -_a[6] + _b[6]
+        _res[7] = -_a[7] + _b[7]
         return _res
+
+    @staticmethod
+    def interpolate(a, b, alpha, epsilon):
+        # type: (sym.PolynomialCameraCal, sym.PolynomialCameraCal, float, float) -> sym.PolynomialCameraCal
+
+        # Total ops: 24
+
+        # Input arrays
+        _a = a.data
+        _b = b.data
+
+        # Intermediate terms (0)
+
+        # Output terms
+        _res = [0.0] * 8
+        _res[0] = _a[0] + alpha * (-_a[0] + _b[0])
+        _res[1] = _a[1] + alpha * (-_a[1] + _b[1])
+        _res[2] = _a[2] + alpha * (-_a[2] + _b[2])
+        _res[3] = _a[3] + alpha * (-_a[3] + _b[3])
+        _res[4] = _a[4] + alpha * (-_a[4] + _b[4])
+        _res[5] = _a[5] + alpha * (-_a[5] + _b[5])
+        _res[6] = _a[6] + alpha * (-_a[6] + _b[6])
+        _res[7] = _a[7] + alpha * (-_a[7] + _b[7])
+        return sym.PolynomialCameraCal.from_storage(_res)

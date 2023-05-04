@@ -32,11 +32,23 @@ class Rot3(object):
     # --------------------------------------------------------------------------
 
     def __init__(self, q=None):
-        # type: (T.Sequence[float]) -> None
+        # type: (T.Union[T.Sequence[float], numpy.ndarray]) -> None
         if q is None:
             self.data = ops.GroupOps.identity().data  # type: T.List[float]
         else:
-            assert len(q) == self.storage_dim()
+            if isinstance(q, numpy.ndarray):
+                if q.shape in [(4, 1), (1, 4)]:
+                    q = q.flatten()
+                elif q.shape != (4,):
+                    raise IndexError(
+                        "Expected q to be a vector of length 4; instead had shape {}".format(
+                            q.shape
+                        )
+                    )
+            elif len(q) != 4:
+                raise IndexError(
+                    "Expected q to be a sequence of length 4, was instead length {}.".format(len(q))
+                )
             self.data = list(q)
 
     @classmethod
@@ -76,8 +88,14 @@ class Rot3(object):
 
         # Input arrays
         _self = self.data
-        if len(right.shape) == 1:
+        if right.shape == (3,):
             right = right.reshape((3, 1))
+        elif right.shape != (3, 1):
+            raise IndexError(
+                "right is expected to have shape (3, 1) or (3,); instead had shape {}".format(
+                    right.shape
+                )
+            )
 
         # Intermediate terms (11)
         _tmp0 = 2 * _self[0]
@@ -93,18 +111,18 @@ class Rot3(object):
         _tmp10 = -2 * _self[0] ** 2
 
         # Output terms
-        _res = numpy.zeros((3, 1))
-        _res[0, 0] = (
+        _res = numpy.zeros(3)
+        _res[0] = (
             right[0, 0] * (_tmp6 + _tmp7)
             + right[1, 0] * (_tmp1 - _tmp3)
             + right[2, 0] * (_tmp4 + _tmp5)
         )
-        _res[1, 0] = (
+        _res[1] = (
             right[0, 0] * (_tmp1 + _tmp3)
             + right[1, 0] * (_tmp10 + _tmp7)
             + right[2, 0] * (-_tmp8 + _tmp9)
         )
-        _res[2, 0] = (
+        _res[2] = (
             right[0, 0] * (-_tmp4 + _tmp5)
             + right[1, 0] * (_tmp8 + _tmp9)
             + right[2, 0] * (_tmp10 + _tmp6 + 1)
@@ -200,10 +218,10 @@ class Rot3(object):
         _tmp4 = -_self[1] ** 2 + _self[3] ** 2
 
         # Output terms
-        _res = numpy.zeros((3, 1))
-        _res[0, 0] = math.atan2(_self[1] * _tmp0 + _self[3] * _tmp1, -_tmp2 + _tmp3 + _tmp4)
-        _res[1, 0] = -math.asin(max(-1, min(1, -2 * _self[1] * _self[3] + _self[2] * _tmp0)))
-        _res[2, 0] = math.atan2(_self[1] * _tmp1 + _self[3] * _tmp0, _tmp2 - _tmp3 + _tmp4)
+        _res = numpy.zeros(3)
+        _res[0] = math.atan2(_self[1] * _tmp0 + _self[3] * _tmp1, -_tmp2 + _tmp3 + _tmp4)
+        _res[1] = -math.asin(max(-1, min(1, -2 * _self[1] * _self[3] + _self[2] * _tmp0)))
+        _res[2] = math.atan2(_self[1] * _tmp1 + _self[3] * _tmp0, _tmp2 - _tmp3 + _tmp4)
         return _res
 
     @staticmethod
@@ -329,6 +347,10 @@ class Rot3(object):
         # type: (Rot3, float) -> numpy.ndarray
         return ops.LieGroupOps.local_coordinates(self, b, epsilon)
 
+    def interpolate(self, b, alpha, epsilon=1e-8):
+        # type: (Rot3, float, float) -> Rot3
+        return ops.LieGroupOps.interpolate(self, b, alpha, epsilon)
+
     # --------------------------------------------------------------------------
     # General Helpers
     # --------------------------------------------------------------------------
@@ -354,6 +376,6 @@ class Rot3(object):
         if isinstance(other, Rot3):
             return self.compose(other)
         elif isinstance(other, numpy.ndarray) and hasattr(self, "compose_with_point"):
-            return self.compose_with_point(other).reshape(other.shape)
+            return getattr(self, "compose_with_point")(other).reshape(other.shape)
         else:
             raise NotImplementedError("Cannot compose {} with {}.".format(type(self), type(other)))

@@ -6,6 +6,9 @@
 ![SymForce](docs/static/images/symforce_banner_dark.png#gh-dark-mode-only)
 <!-- /DARK_MODE_ONLY -->
 
+| 📣 We are open for internships!  If you are interested in contributing to SymForce, visit the program page [here](https://github.com/symforce-org/symforce/discussions/242) to learn more.  |
+|-----------------------------------------|
+
 <p align="center">
 <a href="https://github.com/symforce-org/symforce/actions/workflows/ci.yml?query=branch%3Amain"><img alt="CI status" src="https://github.com/symforce-org/symforce/actions/workflows/ci.yml/badge.svg" /></a>
 <a href="https://symforce.org"><img alt="Documentation" src="https://img.shields.io/badge/api-docs-blue" /></a>
@@ -49,6 +52,8 @@ SymForce is developed and maintained by [Skydio](https://skydio.com/). It is use
  + Highly performant, modular, tested, and extensible code
 
 ### Read the paper: <a href="https://arxiv.org/abs/2204.07889">https://arxiv.org/abs/2204.07889</a>
+
+### And watch the video: <a href="https://youtu.be/QO_ltJRNj0o">https://youtu.be/QO_ltJRNj0o</a>
 
 SymForce was published to [RSS 2022](https://roboticsconference.org/). Please cite it as follows:
 
@@ -186,7 +191,35 @@ See the [Epsilon Tutorial](https://symforce.org/tutorials/epsilon_tutorial.html)
 
 We will model this problem as a factor graph and solve it with nonlinear least-squares.
 
-The residual function comprises of two terms - one for the bearing measurements and one for the odometry measurements. Let's formalize the math we just defined for the bearing measurements into a symbolic residual function:
+First, we need to tell SymForce to use a nonzero epsilon to prevent singularities.  This isn't necessary when playing around with symbolic expressions like we were above, but it's important now that we want to numerically evaluate some results.  For more information, check out the [Epsilon Tutorial](https://symforce.org/tutorials/epsilon_tutorial.html) - for now, all you need to do is this:
+
+```python
+import symforce
+symforce.set_epsilon_to_symbol()
+```
+
+This needs to be done before other parts of symforce are imported - if you're following along in a
+notebook you should add this at the top and restart the kernel.
+
+Now that epsilon is set up, we will instantiate numerical [`Values`](https://symforce.org/api/symforce.values.values.html?highlight=values#module-symforce.values.values) for the problem, including an initial guess for our unknown poses (just set them to identity).
+
+```python
+import numpy as np
+from symforce.values import Values
+
+num_poses = 3
+num_landmarks = 3
+
+initial_values = Values(
+    poses=[sf.Pose2.identity()] * num_poses,
+    landmarks=[sf.V2(-2, 2), sf.V2(1, -3), sf.V2(5, 2)],
+    distances=[1.7, 1.4],
+    angles=np.deg2rad([[145, 335, 55], [185, 310, 70], [215, 310, 70]]).tolist(),
+    epsilon=sf.numeric_epsilon,
+)
+```
+
+Next, we can set up the factors connecting our variables.  The residual function comprises of two terms - one for the bearing measurements and one for the odometry measurements. Let's formalize the math we just defined for the bearing measurements into a symbolic residual function:
 
 ```python
 def bearing_residual(
@@ -212,9 +245,6 @@ Now we can create [`Factor`](https://symforce.org/api/symforce.opt.factor.html?h
 
 ```python
 from symforce.opt.factor import Factor
-
-num_poses = 3
-num_landmarks = 3
 
 factors = []
 
@@ -252,21 +282,6 @@ optimizer = Optimizer(
     optimized_keys=[f"poses[{i}]" for i in range(num_poses)],
     # So that we save more information about each iteration, to visualize later:
     debug_stats=True,
-)
-```
-
-Now we need to instantiate numerical [`Values`](https://symforce.org/api/symforce.values.values.html?highlight=values#module-symforce.values.values) for the problem, including an initial guess for our unknown poses (just set them to identity).
-
-```python
-import numpy as np
-from symforce.values import Values
-
-initial_values = Values(
-    poses=[sf.Pose2.identity()] * num_poses,
-    landmarks=[sf.V2(-2, 2), sf.V2(1, -3), sf.V2(5, 2)],
-    distances=[1.7, 1.4],
-    angles=np.deg2rad([[145, 335, 55], [185, 310, 70], [215, 310, 70]]).tolist(),
-    epsilon=sf.numeric_epsilon,
 )
 ```
 
@@ -599,6 +614,13 @@ You'll then need to add SymForce (along with `gen/python` and `third_party/skyma
 ```bash
 export PYTHONPATH="$PYTHONPATH:/path/to/symforce:/path/to/symforce/build/lcmtypes/python2.7:/path/to/symforce/gen/python:/path/to/symforce/third_party/skymarshal"
 ```
+
+If you want to install SymForce to use its C++ libraries in another CMake project, you can do that with:
+```bash
+make install
+```
+
+SymForce does not currently integrate with CMake's `find_package` (see #209), so if you do this you currently need to add its libraries as link dependencies in your CMake project manually.
 
 ## Verify your installation:
 ```python

@@ -72,7 +72,8 @@ void LevenbergMarquardtSolver<ScalarType, LinearSolverType>::CheckHessianDiagona
 template <typename ScalarType, typename LinearSolverType>
 void LevenbergMarquardtSolver<ScalarType, LinearSolverType>::PopulateIterationStats(
     optimization_iteration_t* const iteration_stats, const StateType& state_,
-    const Scalar new_error, const Scalar relative_reduction, const bool debug_stats) const {
+    const Scalar new_error, const Scalar relative_reduction, const bool debug_stats,
+    const bool include_jacobians) const {
   SYM_TIME_SCOPE("LM<{}>: IterationStats", id_);
 
   iteration_stats->iteration = iteration_;
@@ -81,7 +82,7 @@ void LevenbergMarquardtSolver<ScalarType, LinearSolverType>::PopulateIterationSt
   iteration_stats->new_error = new_error;
   iteration_stats->relative_reduction = relative_reduction;
 
-  {
+  if (include_jacobians) {
     SYM_TIME_SCOPE("LM<{}>: IterationStats - LinearErrorFromValues", id_);
     iteration_stats->new_error_linear = state_.Init().GetLinearization().LinearError(update_);
   }
@@ -138,7 +139,8 @@ void LevenbergMarquardtSolver<ScalarType, LinearSolverType>::UpdateParams(
 
 template <typename ScalarType, typename LinearSolverType>
 bool LevenbergMarquardtSolver<ScalarType, LinearSolverType>::Iterate(
-    const LinearizeFunc& func, OptimizationStats<Scalar>* const stats, const bool debug_stats) {
+    const LinearizeFunc& func, OptimizationStats<Scalar>* const stats, const bool debug_stats,
+    const bool include_jacobians) {
   SYM_TIME_SCOPE("LM<{}>::Iterate()", id_);
   SYM_ASSERT(stats != nullptr);
 
@@ -192,6 +194,17 @@ bool LevenbergMarquardtSolver<ScalarType, LinearSolverType>::Iterate(
   {
     SYM_TIME_SCOPE("LM<{}>: SparseFactorize", id_);
     linear_solver_.Factorize(H_damped_);
+
+    // NOTE(aaron): This has to happen after the first factorize, since L_inner is not filled out
+    // by ComputeSymbolicSparsity
+    if (debug_stats && stats->linear_solver_ordering.size() == 0) {
+      stats->linear_solver_ordering = linear_solver_.Permutation().indices();
+      stats->cholesky_factor_sparsity = {
+          Eigen::Map<const VectorX<typename LinearSolverType::MatrixType::StorageIndex>>(
+              linear_solver_.L().innerIndexPtr(), linear_solver_.L().nonZeros()),
+          Eigen::Map<const VectorX<typename LinearSolverType::MatrixType::StorageIndex>>(
+              linear_solver_.L().outerIndexPtr(), linear_solver_.L().outerSize())};
+    }
   }
 
   {
@@ -215,7 +228,8 @@ bool LevenbergMarquardtSolver<ScalarType, LinearSolverType>::Iterate(
 
   stats->iterations.emplace_back();
   optimization_iteration_t& iteration_stats = stats->iterations.back();
-  PopulateIterationStats(&iteration_stats, state_, new_error, relative_reduction, debug_stats);
+  PopulateIterationStats(&iteration_stats, state_, new_error, relative_reduction, debug_stats,
+                         include_jacobians);
 
   if (!std::isfinite(new_error)) {
     spdlog::warn("LM<{}> Encountered non-finite error: {}", id_, new_error);

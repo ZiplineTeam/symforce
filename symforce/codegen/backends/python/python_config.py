@@ -24,6 +24,7 @@ class PythonConfig(CodegenConfig):
         line_length: Maximum allowed line length in docstrings; used for formatting docstrings.
         use_eigen_types: Use eigen_lcm types for vectors instead of lists
         autoformat: Run a code formatter on the generated code
+        custom_preamble: An optional string to be prepended on the front of the rendered template
         cse_optimizations: Optimizations argument to pass to sf.cse
         zero_epsilon_behavior: What should codegen do if a default epsilon is not set?
         use_numba: Add the `@numba.njit` decorator to generated functions.  This will greatly
@@ -33,6 +34,8 @@ class PythonConfig(CodegenConfig):
                    times.
         reshape_vectors: Allow rank 1 ndarrays to be passed in for row and column vectors by
                          automatically reshaping the input.
+        return_2d_vectors: Return all matrices as 2d ndarrays if True. If False and a matrix has
+                           either only 1 row or only 1 column, return as a 1d ndarray.
     """
 
     doc_comment_line_prefix: str = ""
@@ -40,6 +43,7 @@ class PythonConfig(CodegenConfig):
     use_eigen_types: bool = True
     use_numba: bool = False
     reshape_vectors: bool = True
+    return_2d_vectors: bool = False
 
     @classmethod
     def backend_name(cls) -> str:

@@ -32,11 +32,23 @@ class Rot2(object):
     # --------------------------------------------------------------------------
 
     def __init__(self, z=None):
-        # type: (T.Sequence[float]) -> None
+        # type: (T.Union[T.Sequence[float], numpy.ndarray]) -> None
         if z is None:
             self.data = ops.GroupOps.identity().data  # type: T.List[float]
         else:
-            assert len(z) == self.storage_dim()
+            if isinstance(z, numpy.ndarray):
+                if z.shape in [(2, 1), (1, 2)]:
+                    z = z.flatten()
+                elif z.shape != (2,):
+                    raise IndexError(
+                        "Expected z to be a vector of length 2; instead had shape {}".format(
+                            z.shape
+                        )
+                    )
+            elif len(z) != 2:
+                raise IndexError(
+                    "Expected z to be a sequence of length 2, was instead length {}.".format(len(z))
+                )
             self.data = list(z)
 
     # --------------------------------------------------------------------------
@@ -53,15 +65,21 @@ class Rot2(object):
 
         # Input arrays
         _self = self.data
-        if len(right.shape) == 1:
+        if right.shape == (2,):
             right = right.reshape((2, 1))
+        elif right.shape != (2, 1):
+            raise IndexError(
+                "right is expected to have shape (2, 1) or (2,); instead had shape {}".format(
+                    right.shape
+                )
+            )
 
         # Intermediate terms (0)
 
         # Output terms
-        _res = numpy.zeros((2, 1))
-        _res[0, 0] = _self[0] * right[0, 0] - _self[1] * right[1, 0]
-        _res[1, 0] = _self[0] * right[1, 0] + _self[1] * right[0, 0]
+        _res = numpy.zeros(2)
+        _res[0] = _self[0] * right[0, 0] - _self[1] * right[1, 0]
+        _res[1] = _self[0] * right[1, 0] + _self[1] * right[0, 0]
         return _res
 
     @staticmethod
@@ -195,6 +213,10 @@ class Rot2(object):
         # type: (Rot2, float) -> numpy.ndarray
         return ops.LieGroupOps.local_coordinates(self, b, epsilon)
 
+    def interpolate(self, b, alpha, epsilon=1e-8):
+        # type: (Rot2, float, float) -> Rot2
+        return ops.LieGroupOps.interpolate(self, b, alpha, epsilon)
+
     # --------------------------------------------------------------------------
     # General Helpers
     # --------------------------------------------------------------------------
@@ -220,6 +242,6 @@ class Rot2(object):
         if isinstance(other, Rot2):
             return self.compose(other)
         elif isinstance(other, numpy.ndarray) and hasattr(self, "compose_with_point"):
-            return self.compose_with_point(other).reshape(other.shape)
+            return getattr(self, "compose_with_point")(other).reshape(other.shape)
         else:
             raise NotImplementedError("Cannot compose {} with {}.".format(type(self), type(other)))

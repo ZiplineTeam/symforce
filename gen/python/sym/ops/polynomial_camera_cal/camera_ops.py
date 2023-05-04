@@ -32,9 +32,9 @@ class CameraOps(object):
         # Intermediate terms (0)
 
         # Output terms
-        _focal_length = numpy.zeros((2, 1))
-        _focal_length[0, 0] = _self[0]
-        _focal_length[1, 0] = _self[1]
+        _focal_length = numpy.zeros(2)
+        _focal_length[0] = _self[0]
+        _focal_length[1] = _self[1]
         return _focal_length
 
     @staticmethod
@@ -52,9 +52,9 @@ class CameraOps(object):
         # Intermediate terms (0)
 
         # Output terms
-        _principal_point = numpy.zeros((2, 1))
-        _principal_point[0, 0] = _self[2]
-        _principal_point[1, 0] = _self[3]
+        _principal_point = numpy.zeros(2)
+        _principal_point[0] = _self[2]
+        _principal_point[1] = _self[3]
         return _principal_point
 
     @staticmethod
@@ -72,8 +72,14 @@ class CameraOps(object):
 
         # Input arrays
         _self = self.data
-        if len(point.shape) == 1:
+        if point.shape == (3,):
             point = point.reshape((3, 1))
+        elif point.shape != (3, 1):
+            raise IndexError(
+                "point is expected to have shape (3, 1) or (3,); instead had shape {}".format(
+                    point.shape
+                )
+            )
 
         # Intermediate terms (4)
         _tmp0 = max(epsilon, point[2, 0])
@@ -84,9 +90,9 @@ class CameraOps(object):
         ) / _tmp0
 
         # Output terms
-        _pixel = numpy.zeros((2, 1))
-        _pixel[0, 0] = _self[0] * _tmp3 * point[0, 0] + _self[2]
-        _pixel[1, 0] = _self[1] * _tmp3 * point[1, 0] + _self[3]
+        _pixel = numpy.zeros(2)
+        _pixel[0] = _self[0] * _tmp3 * point[0, 0] + _self[2]
+        _pixel[1] = _self[1] * _tmp3 * point[1, 0] + _self[3]
         _is_valid = max(
             0,
             min(
@@ -117,8 +123,14 @@ class CameraOps(object):
 
         # Input arrays
         _self = self.data
-        if len(point.shape) == 1:
+        if point.shape == (3,):
             point = point.reshape((3, 1))
+        elif point.shape != (3, 1):
+            raise IndexError(
+                "point is expected to have shape (3, 1) or (3,); instead had shape {}".format(
+                    point.shape
+                )
+            )
 
         # Intermediate terms (35)
         _tmp0 = point[1, 0] ** 2
@@ -160,9 +172,9 @@ class CameraOps(object):
         _tmp34 = _tmp12 * (_tmp10 * _tmp33 + 3.0 * _tmp23 * _tmp33 + 2.0 * _tmp25 * _tmp33)
 
         # Output terms
-        _pixel = numpy.zeros((2, 1))
-        _pixel[0, 0] = _self[2] + _tmp14 * point[0, 0]
-        _pixel[1, 0] = _self[3] + _tmp15 * point[1, 0]
+        _pixel = numpy.zeros(2)
+        _pixel[0] = _self[2] + _tmp14 * point[0, 0]
+        _pixel[1] = _self[3] + _tmp15 * point[1, 0]
         _is_valid = max(
             0,
             min(

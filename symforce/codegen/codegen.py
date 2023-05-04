@@ -58,6 +58,24 @@ class GeneratedPaths:
     generated_files: T.List[Path]
 
 
+class InvalidNamespaceError(ValueError):
+    """
+    Exception class for attempting codegen with an invalid namespace
+    """
+
+
+class InvalidNameError(ValueError):
+    """
+    Exception class for attempting codegen with an invalid function name
+    """
+
+
+class CodeGenerationException(Exception):
+    """
+    Exception class for errors raised from templates during code generation
+    """
+
+
 class Codegen:
     """
     Class used for generating code from symbolic expressions or functions.
@@ -75,7 +93,7 @@ class Codegen:
         config: codegen_config.CodegenConfig,
         name: T.Optional[str] = None,
         return_key: T.Optional[str] = None,
-        sparse_matrices: T.List[str] = None,
+        sparse_matrices: T.Sequence[str] = None,
         docstring: str = None,
     ) -> None:
         """
@@ -248,6 +266,7 @@ class Codegen:
         input_types: T.Sequence[T.ElementOrType] = None,
         output_names: T.Sequence[str] = None,
         return_key: str = None,
+        sparse_matrices: T.Sequence[str] = None,
         docstring: str = None,
     ) -> Codegen:
         """
@@ -265,8 +284,10 @@ class Codegen:
             config: Programming language and configuration in which the function is to be generated
             name: Name of the function to be generated; if not provided, will be deduced from the
                 function name.  Must be provided if `func` is a lambda
-            output_names: Optional if only one object is returned by the function.
-                If multiple objects are returned, they must be named.
+            output_names: Names to give to outputs returned from `func`.  If None (the default),
+                names will be chosen as f"res{i}" for functions that return multiple results, or
+                "res" for functions that return a single result
+            sparse_matrices: Outputs with this key will be returned as sparse matrices
             return_key: If multiple objects are returned, the generated function will return
                 the object with this name (must be in output_names)
             docstring: The docstring to be used with the generated function.  Default is to use the
@@ -288,7 +309,8 @@ class Codegen:
         if isinstance(res, tuple):
             # Function returns multiple objects
             output_terms = res
-            assert output_names is not None, "Must give output_names for multiple outputs"
+            if output_names is None:
+                output_names = [f"res{i}" for i in range(len(res))]
             # If a return key is given, it must be valid (i.e. in output_names)
             if return_key is not None:
                 assert return_key in output_names, "Return key not found in named outputs"
@@ -323,6 +345,7 @@ class Codegen:
             outputs=outputs,
             config=config,
             return_key=return_key,
+            sparse_matrices=sparse_matrices,
             docstring=textwrap.dedent(docstring),
         )
 
@@ -368,16 +391,30 @@ class Codegen:
 
         data["should_set_zero"] = should_set_zero
 
+        def raise_helper(msg: str) -> None:
+            """
+            Helper function to raise exceptions from jinja templates
+            """
+            raise CodeGenerationException(msg)
+
+        data["raise"] = raise_helper
+
         return data
 
     @functools.cached_property
     def print_code_results(self) -> codegen_util.PrintCodeResult:
-        return codegen_util.print_code(
-            inputs=self.inputs,
-            outputs=self.outputs,
-            sparse_mat_data=self.sparse_mat_data,
-            config=self.config,
-        )
+        try:
+            return codegen_util.print_code(
+                inputs=self.inputs,
+                outputs=self.outputs,
+                sparse_mat_data=self.sparse_mat_data,
+                config=self.config,
+            )
+        # Jinja catches some exception types from templates and swallows them or rewrites them - to
+        # avoid this we re-raise as `CodeGenerationException`
+        # See for example `jinja2/environment.py:466`
+        except (TypeError, LookupError, AttributeError) as ex:
+            raise CodeGenerationException("Exception printing code results, see above") from ex
 
     @functools.cached_property
     def unused_arguments(self) -> T.List[str]:
@@ -386,7 +423,11 @@ class Codegen:
         """
         results = []
         for input_name, input_value in self.inputs.items():
-            input_symbols = set(ops.StorageOps.to_storage(input_value))
+            if isinstance(input_value, sf.DataBuffer):
+                # DataBuffers have no storage, so we look for their exact symbol
+                input_symbols = {input_value}
+            else:
+                input_symbols = set(ops.StorageOps.to_storage(input_value))
             if not input_symbols.intersection(self.output_symbols):
                 results.append(input_name)
         return results
@@ -425,7 +466,8 @@ class Codegen:
             lcm_bindings_output_dir: Directory in which to output language-specific LCM bindings
             shared_types: Mapping between types defined as part of this codegen object (e.g. keys in
                 self.inputs that map to Values objects) and previously generated external types.
-            namespace: Namespace for the generated function and any generated types.
+            namespace: Namespace for the generated function and any generated types.  Must be a
+                       valid identifier, nested namespaces are not supported.
             generated_file_name: Stem for the filename into which the function is generated, with
                                  no file extension
             skip_directory_nesting: Generate the output file directly into output_dir instead of
@@ -434,6 +476,17 @@ class Codegen:
         assert (
             self.name is not None
         ), "Name should be set either at construction or by with_jacobians"
+
+        if not self.name.isidentifier():
+            raise InvalidNameError(
+                f'Invalid function name "{self.name}". `name` must be a valid identifier.'
+            )
+
+        if not namespace.isidentifier():
+            raise InvalidNamespaceError(
+                f'Invalid namespace "{namespace}".  `namespace` must be a valid identifier (nested '
+                "namespaces are not supported)"
+            )
 
         output_dir = self._maybe_create_output_dir(output_dir=output_dir)
 
@@ -465,9 +518,9 @@ class Codegen:
         )
 
         # Maps typenames to generated types
-        self.typenames_dict = types_codegen_data["typenames_dict"]
+        self.typenames_dict = types_codegen_data.typenames_dict
         # Maps typenames to namespaces
-        self.namespaces_dict = types_codegen_data["namespaces_dict"]
+        self.namespaces_dict = types_codegen_data.namespaces_dict
         assert self.namespaces_dict is not None
         self.unique_namespaces = set(self.namespaces_dict.values())
 
@@ -597,7 +650,7 @@ class Codegen:
         else:
             out_function_dir = output_dir / backend_name / "symforce" / self.namespace
 
-        logger.info(f'Creating {backend_name} function from "{self.name}" at "{out_function_dir}"')
+        logger.debug(f'Creating {backend_name} function from "{self.name}" at "{out_function_dir}"')
 
         # Get templates to render
         if templates is None:
@@ -605,16 +658,31 @@ class Codegen:
             templates = template_util.TemplateList()
         for source, dest in self.config.templates_to_render(generated_file_name):
             templates.add(
-                source,
-                template_data,
+                template_path=source,
+                data=template_data,
+                config=self.config.render_template_config,
                 template_dir=template_dir,
                 output_path=out_function_dir / dest,
             )
 
         # Render
-        templates.render(autoformat=self.config.autoformat)
-        return out_function_dir, [Path(v.output_path) for v in templates.items]
+        templates.render()
 
+        lcm_data = codegen_util.generate_lcm_types(
+            lcm_type_dir=types_codegen_data.lcm_type_dir,
+            lcm_files=types_codegen_data.lcm_files,
+            lcm_output_dir=types_codegen_data.lcm_bindings_output_dir,
+        )
+
+        return GeneratedPaths(
+            output_dir=output_dir,
+            lcm_type_dir=types_codegen_data.lcm_type_dir,
+            function_dir=out_function_dir,
+            python_types_dir=lcm_data.python_types_dir,
+            cpp_types_dir=lcm_data.cpp_types_dir,
+            generated_files=[Path(v.output_path) for v in templates.items],
+        )
+    
     def _maybe_create_output_dir(self, output_dir: T.Optional[T.Openable]) -> Path:
         """
         Create the output directory. If none is specified, pick something in /tmp.

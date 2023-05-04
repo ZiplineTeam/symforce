@@ -135,7 +135,7 @@ class OptimizationProblem:
                 namespace=namespace,
                 sparse_linearization=sparse_linearization,
             )
-            logger.info(
+            logger.debug(
                 "Generated function `{}` in directory `{}`".format(
                     output_data["name"], output_data["function_dir"]
                 )
@@ -224,7 +224,9 @@ class OptimizationProblem:
             optimized_keys = self.optimized_keys()
         numeric_factors = []
         # we temp generate the factors, so skip formating to save time
-        config = PythonConfig(autoformat=False)
+        config = PythonConfig(
+            render_template_config=codegen_config.RenderTemplateConfig(autoformat=False)
+        )
         for factor in self.make_symbolic_factors(name, config=config):
             factor_optimized_keys = [
                 opt_key for opt_key in optimized_keys if opt_key in factor.keys

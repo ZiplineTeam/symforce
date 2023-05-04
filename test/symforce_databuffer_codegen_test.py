@@ -12,6 +12,7 @@ symforce.set_epsilon_to_symbol()
 
 import symforce.symbolic as sf
 from symforce import codegen
+from symforce import path_util
 from symforce import typing as T
 from symforce.codegen import codegen_util
 from symforce.opt.factor import Factor
@@ -19,9 +20,7 @@ from symforce.opt.optimizer import Optimizer
 from symforce.test_util import TestCase
 from symforce.values import Values
 
-CURRENT_DIR = Path(__file__).parent
-SYMFORCE_DIR = CURRENT_DIR.parent
-TEST_DATA_DIR = SYMFORCE_DIR.joinpath(
+TEST_DATA_DIR = path_util.symforce_data_root().joinpath(
     "test", "symforce_function_codegen_test_data", symforce.get_symbolic_api()
 )
 
@@ -31,7 +30,7 @@ class SymforceDataBufferCodegenTest(TestCase):
     Test databuffer codegen
     """
 
-    def gen_code(self, output_dir: str) -> None:
+    def gen_code(self, output_dir: Path) -> None:
         a, b = sf.symbols("a b")
         # make sure Databuffer works with whatever namestring works for symbol
         buffer = sf.DataBuffer("foo.Buffer")
@@ -120,6 +119,31 @@ class SymforceDataBufferCodegenTest(TestCase):
 
         self.assertAlmostEqual(result.optimized_values["x"], 0, places=9)
         self.assertAlmostEqual(result.error(), 0, places=9)
+
+    def test_databuffer_in_input_values_fails(self) -> None:
+        """
+        Tests that an assertion is raised if a databuffer is included inside a values instead of as
+        standalone arg to a generated function. Eventually we may want to allow this, but for now
+        codegen doesn't generate correct code in this scenario.
+        """
+        output_dir = self.make_output_dir("sf_databuffer_codegen_test")
+
+        a, b = sf.symbols("a b")
+        # make sure Databuffer works with whatever namestring works for symbol
+        buffer = sf.DataBuffer("buffer")
+        result = a + b
+
+        inputs = Values(buffer=buffer, a=a, b=b)
+
+        buffer_func = codegen.Codegen(
+            inputs=Values(inputs=inputs),
+            outputs=Values(result=result),
+            config=codegen.CppConfig(),
+            name="buffer_func",
+            return_key="result",
+        )
+        with self.assertRaises(ValueError):
+            buffer_func.generate_function(output_dir=output_dir)
 
 
 if __name__ == "__main__":

@@ -4,15 +4,14 @@
 # ----------------------------------------------------------------------------
 
 import os
+import re
 import sys
 import textwrap
-from pathlib import Path
 
+from symforce import path_util
 from symforce import python_util
 from symforce import typing as T
 from symforce.test_util import TestCase
-
-SYMFORCE_DIR = Path(__file__).resolve().parent.parent
 
 
 class SymforceRequirementsTest(TestCase):
@@ -35,14 +34,14 @@ class SymforceRequirementsTest(TestCase):
         TestCase.main(*args, **kwargs)
 
     def test_requirements(self) -> None:
-        output_dir = Path(self.make_output_dir("sf_requirements_test_"))
+        output_dir = self.make_output_dir("sf_requirements_test_")
 
         output_requirements_file = output_dir / "dev_requirements.txt"
-        symforce_requirements_file = SYMFORCE_DIR / "dev_requirements.txt"
+        symforce_requirements_file = path_util.symforce_root() / "dev_requirements.txt"
 
         local_requirements_map = {
-            f"skymarshal @ file://localhost/{SYMFORCE_DIR}/third_party/skymarshal": "file:./third_party/skymarshal",
-            f"symforce-sym @ file://localhost/{SYMFORCE_DIR}/gen/python": "file:./gen/python",
+            "skymarshal @ file://localhost/{}/third_party/skymarshal": "file:./third_party/skymarshal",
+            "symforce-sym @ file://localhost/{}/gen/python": "file:./gen/python",
         }
 
         # Copy the symforce requirements file into the temp directory
@@ -55,7 +54,9 @@ class SymforceRequirementsTest(TestCase):
             # nicer for this use case
             # https://stackoverflow.com/a/64809439/2791611
             for key, value in local_requirements_map.items():
-                requirements_contents = requirements_contents.replace(value, key)
+                requirements_contents = requirements_contents.replace(
+                    value, key.format(path_util.symforce_root())
+                )
 
             output_requirements_file.write_text(requirements_contents)
 
@@ -74,7 +75,7 @@ class SymforceRequirementsTest(TestCase):
                 "--extra=_setup",
             ]
             + maybe_piptools_upgrade,
-            cwd=SYMFORCE_DIR,
+            cwd=path_util.symforce_root(),
             env=dict(
                 os.environ,
                 # Compile command to put in the header of dev_requirements.txt
@@ -85,7 +86,7 @@ class SymforceRequirementsTest(TestCase):
         # Reverse path rewrite back to relative paths
         requirements_contents = output_requirements_file.read_text()
         for key, value in local_requirements_map.items():
-            requirements_contents = requirements_contents.replace(key, value)
+            requirements_contents = re.sub(key.format(".*"), value, requirements_contents)
 
         # Inject the python version requirement
         sentinel = "--index-url https://pypi.python.org/simple\n"
@@ -101,7 +102,9 @@ class SymforceRequirementsTest(TestCase):
 
         output_requirements_file.write_text(requirements_contents)
 
-        self.compare_or_update_file(symforce_requirements_file, output_requirements_file)
+        self.compare_or_update_file(
+            path_util.symforce_data_root() / "dev_requirements.txt", output_requirements_file
+        )
 
 
 if __name__ == "__main__":

@@ -74,6 +74,11 @@ class Matrix(Storage):
         # 2) Construct with another Matrix - this is easy
         elif len(args) == 1 and hasattr(args[0], "is_Matrix") and args[0].is_Matrix:
             rows, cols = args[0].shape
+            if cls._is_fixed_size():
+                assert cls.SHAPE == (
+                    rows,
+                    cols,
+                ), f"Inconsistent shape: expected shape {cls.SHAPE} but found shape {(rows, cols)}"
             flat_list = list(args[0])
 
         # 3) If there's one argument and it's an array, works for fixed or dynamic size.
@@ -199,10 +204,14 @@ class Matrix(Storage):
         return cls.SHAPE[0] * cls.SHAPE[1]
 
     @classmethod
-    def from_storage(cls, vec: _T.Sequence[_T.Scalar]) -> Matrix:
+    def from_storage(
+        cls: _T.Type[MatrixT], vec: _T.Union[_T.Sequence[_T.Scalar], Matrix]
+    ) -> MatrixT:
         assert cls._is_fixed_size(), f"Type has no size info: {cls}"
+        if isinstance(vec, Matrix):
+            vec = list(vec)
         rows, cols = cls.SHAPE
-        return matrix_type_from_shape((cols, rows))(vec).transpose()
+        return _T.cast(Matrix.MatrixT, matrix_type_from_shape((cols, rows))(vec).transpose())
 
     def to_storage(self) -> _T.List[_T.Scalar]:
         return list(self.mat.transpose())
@@ -212,10 +221,12 @@ class Matrix(Storage):
         return cls.storage_dim()
 
     @classmethod
-    def from_tangent(cls, vec: _T.Sequence[_T.Scalar], epsilon: _T.Scalar = 0) -> Matrix:
+    def from_tangent(
+        cls: _T.Type[MatrixT], vec: _T.Sequence[_T.Scalar], epsilon: _T.Scalar = sf.epsilon()
+    ) -> MatrixT:
         return cls.from_storage(vec)
 
-    def to_tangent(self, epsilon: _T.Scalar = 0) -> _T.List[_T.Scalar]:
+    def to_tangent(self, epsilon: _T.Scalar = sf.epsilon()) -> _T.List[_T.Scalar]:
         return self.to_storage()
 
     def storage_D_tangent(self) -> Matrix:
@@ -234,13 +245,16 @@ class Matrix(Storage):
         Matrix of zeros.
         """
         assert cls._is_fixed_size(), f"Type has no size info: {cls}"
-        return cls.zeros(*cls.SHAPE)  # type: ignore
+        return cls.zeros(*cls.SHAPE)
 
     @classmethod
-    def zeros(cls, rows: int, cols: int) -> Matrix:  # pylint: disable=signature-differs
+    def zeros(cls: _T.Type[MatrixT], rows: int, cols: int) -> MatrixT:
         """
         Matrix of zeros.
         """
+        if cls._is_fixed_size() and cls.SHAPE != (rows, cols):
+            raise TypeError(f"Called zeros({rows=}, {cols=}) on matrix of shape {cls.SHAPE}")
+
         return cls([[sf.S.Zero] * cols for _ in range(rows)])
 
     @classmethod
@@ -249,20 +263,32 @@ class Matrix(Storage):
         Matrix of ones.
         """
         assert cls._is_fixed_size(), f"Type has no size info: {cls}"
-        return cls.ones(*cls.SHAPE)  # type: ignore
+        return cls.ones(*cls.SHAPE)
 
     @classmethod
-    def ones(cls, rows: int, cols: int) -> Matrix:  # pylint: disable=signature-differs
+    def ones(cls: _T.Type[MatrixT], rows: int, cols: int) -> MatrixT:
         """
         Matrix of ones.
         """
+        if cls._is_fixed_size() and cls.SHAPE != (rows, cols):
+            raise TypeError(f"Called ones({rows=}, {cols=}) on matrix of shape {cls.SHAPE}")
+
         return cls([[sf.S.One] * cols for _ in range(rows)])
 
     @classmethod
-    def diag(cls, diagonal: _T.Sequence[_T.Scalar]) -> Matrix:
+    def diag(cls: _T.Type[MatrixT], diagonal: _T.Sequence[_T.Scalar]) -> MatrixT:
         """
         Construct a square matrix from the diagonal.
         """
+        if cls._is_fixed_size():
+            rows, cols = cls.SHAPE
+            if rows != cols:
+                raise TypeError(f"Cannot call .diag() on non-square shape {cls.SHAPE}")
+            if rows != len(diagonal):
+                raise ValueError(
+                    f"Cannot call .diag() with a diagonal of length {len(diagonal)} on a matrix of shape {cls.SHAPE}"
+                )
+
         mat = cls.zeros(len(diagonal), len(diagonal))
         for i, x in enumerate(diagonal):
             mat[i, i] = x
@@ -307,7 +333,7 @@ class Matrix(Storage):
         """
         if rows is None and cols is None:
             assert cls._is_fixed_size(), f"Type has no size info: {cls}"
-            return cls.eye(*cls.SHAPE)  #  type: ignore
+            return cls.eye(*cls.SHAPE)
 
         if rows is None:
             raise ValueError("If cols is not None, rows must not be None")
@@ -317,7 +343,7 @@ class Matrix(Storage):
         mat = cls.zeros(rows, cols)
         for i in range(min(rows, cols)):
             mat[i, i] = sf.S.One
-        return mat  # type: ignore
+        return mat
 
     def inv(self: MatrixT, method: str = "LU") -> MatrixT:
         """
@@ -335,7 +361,7 @@ class Matrix(Storage):
             **kwargs (dict): Forwarded to `sf.Symbol`
         """
         assert cls._is_fixed_size(), f"Type has no size info: {cls}"
-        rows, cols = cls.SHAPE  # pylint: disable=unpacking-non-sequence
+        rows, cols = cls.SHAPE
 
         row_names = [str(r_i) for r_i in range(rows)]
         col_names = [str(c_i) for c_i in range(cols)]
@@ -463,10 +489,27 @@ class Matrix(Storage):
         """
         Matrix Transpose
         """
-        return self.__class__(self.mat.transpose())
+        return Matrix(self.mat.transpose())
+
+    def lower_triangle(self: MatrixT) -> MatrixT:
+        """
+        Returns the lower triangle (including diagonal) of self
+
+        self must be square
+        """
+        rows, cols = self.shape
+        if rows != cols:
+            raise ValueError(
+                f"Attempted to take lower triangle of non-square matrix (found shape {self.shape})"
+            )
+
+        lt = self.__class__()
+        for k in range(rows):
+            lt[k, : k + 1] = self[k, : k + 1]
+        return lt
 
     def reshape(self, rows: int, cols: int) -> Matrix:
-        return self.__class__(self.mat.reshape(rows, cols))
+        return Matrix(self.mat.reshape(rows, cols))
 
     def dot(self, other: Matrix) -> _T.Scalar:
         """
@@ -509,19 +552,21 @@ class Matrix(Storage):
         self._assert_is_vector()
         return self.dot(self)
 
-    def norm(self, epsilon: _T.Scalar = 0) -> _T.Scalar:
+    def norm(self, epsilon: _T.Scalar = sf.epsilon()) -> _T.Scalar:
         """
         Norm of a vector (square root of magnitude).
         """
         return sf.sqrt(self.squared_norm() + epsilon)
 
-    def normalized(self: MatrixT, epsilon: _T.Scalar = 0) -> MatrixT:
+    def normalized(self: MatrixT, epsilon: _T.Scalar = sf.epsilon()) -> MatrixT:
         """
         Returns a unit vector in this direction (divide by norm).
         """
         return self / self.norm(epsilon=epsilon)
 
-    def clamp_norm(self: MatrixT, max_norm: _T.Scalar, epsilon: _T.Scalar = 0) -> MatrixT:
+    def clamp_norm(
+        self: MatrixT, max_norm: _T.Scalar, epsilon: _T.Scalar = sf.epsilon()
+    ) -> MatrixT:
         """
         Clamp a vector to the given norm in a safe/differentiable way.
 
@@ -567,11 +612,18 @@ class Matrix(Storage):
 
     def __getitem__(self, item: _T.Any) -> _T.Any:
         """
-        Get a scalar value or submatrix slice.
+        Get a scalar value or submatrix slice. Unlike sympy, for 1D matrices the submatrix slice is
+        returned as a 1D matrix instead of as a list.
         """
         ret = self.mat.__getitem__(item)
         if isinstance(ret, sf.sympy.Matrix):
-            ret = self.__class__(ret)
+            return Matrix(ret)
+        if isinstance(ret, list):
+            if self.cols > 1:
+                # Original matrix is a row vector, return a row vector
+                return Matrix(1, len(ret), ret)
+            # Original matrix is a column vector, return a column vector
+            return Matrix(ret)
         return ret
 
     def __setitem__(
@@ -643,9 +695,9 @@ class Matrix(Storage):
         if typing_util.scalar_like(right):
             return self.applyfunc(lambda x: x * right)
         elif isinstance(right, Matrix):
-            return self.__class__(self.mat * right.mat)
+            return Matrix(self.mat * right.mat)
         else:
-            return self.__class__(self.mat * right)
+            return Matrix(self.mat * right)
 
     @_T.overload
     def __rmul__(
@@ -692,6 +744,10 @@ class Matrix(Storage):
             return self * right.inv()
         else:
             return self.__class__(self.mat * _T.cast(sf.sympy.MutableDenseMatrix, right).inv())
+
+    def _symengine_(self) -> "symengine.Matrix":  # type: ignore[name-defined]
+        symengine = symforce._find_symengine()  # pylint: disable=protected-access
+        return symengine.S(self.mat)  # type: ignore[attr-defined]
 
     def compute_AtA(self, lower_only: bool = False) -> Matrix:
         """
@@ -777,11 +833,11 @@ class Matrix(Storage):
     __truediv__ = __div__
 
     @staticmethod
-    def are_parallel(a: Vector3, b: Vector3, epsilon: _T.Scalar) -> _T.Scalar:
+    def are_parallel(a: Vector3, b: Vector3, tolerance: _T.Scalar) -> _T.Scalar:
         """
-        Returns 1 if a and b are parallel within epsilon, and 0 otherwise.
+        Returns 1 if a and b are parallel within tolerance, and 0 otherwise.
         """
-        return (1 - sf.sign(a.cross(b).norm() - epsilon)) / 2
+        return (1 - sf.sign(a.cross(b).squared_norm() - tolerance ** 2)) / 2
 
     @staticmethod
     def skew_symmetric(a: Vector3) -> Matrix33:
@@ -864,7 +920,7 @@ class Matrix(Storage):
         """
         Display self.mat in IPython, with SymPy's pretty printing
         """
-        display(self.mat)  # type: ignore # pylint: disable=undefined-variable # not defined outside of ipython
+        display(self.mat)  # type: ignore[name-defined] # pylint: disable=undefined-variable # not defined outside of ipython
 
     @staticmethod
     def init_printing() -> None:
@@ -875,7 +931,7 @@ class Matrix(Storage):
         """
         ip = None
         try:
-            ip = get_ipython()  # type: ignore # only exists in ipython
+            ip = get_ipython()  # type: ignore[name-defined] # only exists in ipython
         except NameError:
             pass
 
@@ -913,9 +969,79 @@ class Matrix11(Matrix):
 class Matrix21(Matrix):
     SHAPE = (2, 1)
 
+    @staticmethod
+    def unit_x() -> Vector2:
+        """
+        The unit vector [1, 0]
+        """
+        return Vector2(1, 0)
+
+    @staticmethod
+    def unit_y() -> Vector2:
+        """
+        The unit vector [0, 1]
+        """
+        return Vector2(0, 1)
+
+    @property
+    def x(self) -> sf.Scalar:
+        """
+        The entry self[0, 0]
+        """
+        return self[0, 0]
+
+    @property
+    def y(self) -> sf.Scalar:
+        """
+        The entry self[1, 0]
+        """
+        return self[1, 0]
+
 
 class Matrix31(Matrix):
     SHAPE = (3, 1)
+
+    @staticmethod
+    def unit_x() -> Vector3:
+        """
+        The unit vector [1, 0, 0]
+        """
+        return Vector3(1, 0, 0)
+
+    @staticmethod
+    def unit_y() -> Vector3:
+        """
+        The unit vector [0, 1, 0]
+        """
+        return Vector3(0, 1, 0)
+
+    @staticmethod
+    def unit_z() -> Vector3:
+        """
+        The unit vector [0, 0, 1]
+        """
+        return Vector3(0, 0, 1)
+
+    @property
+    def x(self) -> sf.Scalar:
+        """
+        The entry self[0, 0]
+        """
+        return self[0, 0]
+
+    @property
+    def y(self) -> sf.Scalar:
+        """
+        The entry self[1, 0]
+        """
+        return self[1, 0]
+
+    @property
+    def z(self) -> sf.Scalar:
+        """
+        The entry self[2, 0]
+        """
+        return self[2, 0]
 
 
 class Matrix41(Matrix):

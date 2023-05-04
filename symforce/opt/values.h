@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <unordered_map>
 
 #include <lcmtypes/sym/values_t.hpp>
@@ -236,8 +237,8 @@ class Values {
   /**
    * Serialize to LCM.
    */
-  void FillLcmType(LcmType* msg) const;
-  LcmType GetLcmType() const;
+  void FillLcmType(LcmType* msg, bool sort_keys = false) const;
+  LcmType GetLcmType(bool sort_keys = false) const;
 
  protected:
   MapType map_;
