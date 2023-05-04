@@ -2,16 +2,16 @@
 # SymForce - Copyright 2022, Skydio, Inc.
 # This source code is under the Apache 2.0 license found in the LICENSE file.
 # ----------------------------------------------------------------------------
+# Everything in this file is SymPy, not SymEngine (even when SymForce is on the SymEngine backend)
+import sympy
 from sympy.printing.rust import RustCodePrinter
 
 from symforce import typing as T
 
-# Everything in this file is SymPy, not SymEngine (even when SymForce is on the SymEngine backend)
-import sympy
-
 
 class IntegerWrapper(sympy.Integer):
     """Wrapper to protect integers from conversion to Scalar, when appropriate."""
+
     pass
 
 
@@ -80,37 +80,37 @@ class RustCodePrinterCustomized(RustCodePrinter):
         Customizations:
             * Reference rust standard library, and cast appropriately.
         """
-        return 'Scalar::from_f64(std::f64::consts::E).unwrap()'
+        return "Scalar::from_f64(std::f64::consts::E).unwrap()"
 
     def _print_Pi(self, expr: sympy.core.numbers.Pi, _type=False) -> str:
         """
         Customizations:
             * Reference rust standard library, and cast appropriately.
         """
-        return 'Scalar::from_f64(std::f64::consts::PI).unwrap()'
+        return "Scalar::from_f64(std::f64::consts::PI).unwrap()"
 
     def _print_Infinity(self, expr, _type=False):
         """
         Customizations:
             * Reference rust standard library, and cast appropriately.
         """
-        return 'Scalar::from_f64(f64::INFINITY).unwrap()'
+        return "Scalar::from_f64(f64::INFINITY).unwrap()"
 
     def _print_NegativeInfinity(self, expr, _type=False):
         """
         Customizations:
             * Reference rust standard library, and cast appropriately.
         """
-        return 'Scalar::from_f64(f64::NEG_INFINITY).unwrap()'
+        return "Scalar::from_f64(f64::NEG_INFINITY).unwrap()"
 
     def _print_NaN(self, expr, _type=False):
         """
         Customizations:
             * Reference rust standard library, and cast appropriately.
         """
-        return 'Scalar::from_f64(f64::NAN).unwrap()'
+        return "Scalar::from_f64(f64::NAN).unwrap()"
 
-    def _print_Integer(self, expr: sympy.Integer, _type:bool = False) -> str:
+    def _print_Integer(self, expr: sympy.Integer, _type: bool = False) -> str:
         """
         Customizations:
             * Cast all integer literals to Scalar at compile time.
@@ -191,7 +191,7 @@ class RustCodePrinterCustomized(RustCodePrinter):
             # for something like `sin(x + y + z)`,
             # make sure we can get '(x + y + z).sin()'
             # instead of 'x + y + z.sin()'
-            return '(' + self._print(expr) + ')'
+            return "(" + self._print(expr) + ")"
         elif expr.is_number:
             return self._print(expr)
         else:

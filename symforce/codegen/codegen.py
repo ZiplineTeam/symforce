@@ -508,7 +508,9 @@ class Codegen:
         templates = template_util.TemplateList()
 
         # Determine the types we need as dependencies
-        values_indices = {name: gen_type.index() for name, gen_type in self._get_types_to_generate()}
+        values_indices = {
+            name: gen_type.index() for name, gen_type in self._get_types_to_generate()
+        }
 
         # Generate types from the Values objects in our inputs and outputs
         types_codegen_data = types_package_codegen.generate_lcm_types(
@@ -529,12 +531,13 @@ class Codegen:
 
         # Namespace of this function + generated types
         self.namespace = namespace
-        
+
         out_function_dir, generated_files = self._render_templates(
             generated_file_name=generated_file_name,
             skip_directory_nesting=skip_directory_nesting,
             output_dir=output_dir,
-            templates=templates)
+            templates=templates,
+        )
 
         lcm_data = codegen_util.generate_lcm_types(
             lcm_type_dir=types_codegen_data.lcm_type_dir,
@@ -550,7 +553,7 @@ class Codegen:
             cpp_types_dir=lcm_data.cpp_types_dir,
             generated_files=generated_files,
         )
-    
+
     def generate_function_no_lcm(
         self,
         output_dir: T.Openable = None,
@@ -602,28 +605,34 @@ class Codegen:
             generated_file_name = self.name
 
         # Determine the types we need as dependencies
-        values_indices = {name: gen_type.index() for name, gen_type in self._get_types_to_generate()}
+        values_indices = {
+            name: gen_type.index() for name, gen_type in self._get_types_to_generate()
+        }
 
         # Generate types from the Values objects in our inputs and outputs
         types_dict = types_package_codegen.build_types_dict(
-            package_name=namespace,
-            values_indices=values_indices,
-            shared_types=shared_types
+            package_name=namespace, values_indices=values_indices, shared_types=shared_types
         )
 
         # Create mapping from short type name to namespace and full typename
-        self.typenames_dict, self.namespaces_dict = \
-            types_package_codegen.build_typenames_and_namespace_dict(
-                package_name=namespace, values_indices=values_indices,
-                types_dict=types_dict, shared_types=shared_types)
+        (
+            self.typenames_dict,
+            self.namespaces_dict,
+        ) = types_package_codegen.build_typenames_and_namespace_dict(
+            package_name=namespace,
+            values_indices=values_indices,
+            types_dict=types_dict,
+            shared_types=shared_types,
+        )
 
         # Namespace of this function + generated types
         self.namespace = namespace
-        
+
         out_function_dir, generated_files = self._render_templates(
             generated_file_name=generated_file_name,
             skip_directory_nesting=skip_directory_nesting,
-            output_dir=output_dir)
+            output_dir=output_dir,
+        )
 
         return GeneratedPaths(
             output_dir=output_dir,
@@ -633,13 +642,14 @@ class Codegen:
             cpp_types_dir=Path(),
             generated_files=generated_files,
         )
-    
-    
-    def _render_templates(self,
-                          generated_file_name: str,
-                          skip_directory_nesting: bool,
-                          output_dir: Path,
-                          templates: T.Optional[template_util.TemplateList] = None) -> T.Tuple[Path, T.List[Path]]:
+
+    def _render_templates(
+        self,
+        generated_file_name: str,
+        skip_directory_nesting: bool,
+        output_dir: Path,
+        templates: T.Optional[template_util.TemplateList] = None,
+    ) -> T.Tuple[Path, T.List[Path]]:
         """
         Actually render the templates to create this function in the target language.
         Args:
@@ -669,7 +679,7 @@ class Codegen:
         if templates is None:
             # List of (template_path, output_path, data)
             templates = template_util.TemplateList()
-            
+
         for source, dest in self.config.templates_to_render(generated_file_name):
             templates.add(
                 template_path=source,
@@ -682,7 +692,7 @@ class Codegen:
         # Render
         templates.render()
         return out_function_dir, [Path(v.output_path) for v in templates.items]
-    
+
     def _maybe_create_output_dir(self, output_dir: T.Optional[T.Openable]) -> Path:
         """
         Create the output directory. If none is specified, pick something in /tmp.
