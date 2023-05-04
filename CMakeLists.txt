@@ -3,9 +3,10 @@
 # This source code is under the Apache 2.0 license found in the LICENSE file.
 # ----------------------------------------------------------------------------
 
-# NOTE(aaron): This is the minimum version for FetchContent, not sure if we need newer; certainly no
-# newer than 3.15 required
-cmake_minimum_required(VERSION 3.11)
+# NOTE(aaron): This is the minimum version for policy range support, not sure if we need newer;
+# certainly no newer than 3.15 required.  This will use NEW policies up to CMake 3.25; this should
+# be the maximum tested CMake version, matching dev_requirements.txt
+cmake_minimum_required(VERSION 3.12...3.25)
 
 project(symforce)
 
@@ -129,6 +130,12 @@ endif()
 # Third Party Dependencies (needed for build)
 # ==============================================================================
 
+# NOTE(aaron): Generally, for third party dependencies we will use already-installed versions if
+# available via find_package, and if not pull with FetchContent.  In CMake 3.24, FetchContent can
+# do this check automatically, so this logic could be simplified:
+# https://www.kitware.com/cmake-3-24-0-is-available-for-download/
+# We use URL downloads with FetchContent, because GIT downloads do not have a way to do shallow
+# clones with specific commits
 include(FetchContent)
 
 # ------------------------------------------------------------------------------
@@ -141,9 +148,8 @@ if(SYMFORCE_EIGEN_TARGET STREQUAL "Eigen3::Eigen")
     function(add_eigen)
       FetchContent_Declare(
         eigen3
-        GIT_REPOSITORY https://gitlab.com/libeigen/eigen
-        GIT_TAG 3147391d946bb4b6c68edd901f2add6ac1f31f8c  # release 3.4.0
-        GIT_SHALLOW TRUE
+        URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+        URL_HASH SHA256=8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72
       )
 
       set(EIGEN_BUILD_DOC OFF CACHE BOOL "Don't build Eigen docs")
@@ -174,8 +180,8 @@ if(SYMFORCE_BUILD_BENCHMARKS OR SYMFORCE_BUILD_TESTS)
     function(add_catch)
       FetchContent_Declare(
         Catch2
-        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG 5df88da16e276f853cc0c45f4b570419be77dd43  # v3.1.1
+        URL https://github.com/catchorg/Catch2/archive/refs/tags/v3.1.1.zip
+        URL_HASH SHA256=eec6c327cd9187c63bbaaa8486f715e31544000bf8876c0543e1181a2a52a5de
       )
 
       FetchContent_MakeAvailable(Catch2)

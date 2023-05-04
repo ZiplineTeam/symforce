@@ -18,11 +18,9 @@ from symforce import codegen
 from symforce import ops
 from symforce import path_util
 from symforce import python_util
-from symforce import typing as T
 from symforce.codegen import cam_package_codegen
 from symforce.codegen import codegen_util
 from symforce.codegen import geo_factors_codegen
-from symforce.codegen import geo_package_codegen
 from symforce.codegen import slam_factors_codegen
 from symforce.codegen import sym_util_package_codegen
 from symforce.codegen import template_util
@@ -67,7 +65,7 @@ class SymforceGenCodegenTest(TestCase):
         )
 
     def generate_tangent_d_storage_functions(self, output_dir: Path) -> None:
-        for cls in geo_package_codegen.DEFAULT_GEO_TYPES:
+        for cls in sf.GEO_TYPES:
             tangent_D_storage_codegen = codegen.Codegen.function(
                 func=ops.LieGroupOps.tangent_D_storage,
                 input_types=[cls],

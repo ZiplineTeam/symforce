@@ -26,7 +26,6 @@ from symforce.codegen import codegen_config
 from symforce.codegen import codegen_util
 from symforce.codegen import template_util
 from symforce.codegen import types_package_codegen
-from symforce.codegen.type_description import TypeDescription
 from symforce.type_helpers import symbolic_inputs
 from symforce.values import Values
 
@@ -277,19 +276,20 @@ class Codegen:
                 Additionally, keyword only arguments will be set to their default values and not
                 included in the signature of the generated function.
             input_types: List of types of the inputs to the given function.  This is optional; if
-                `func` has type annotations, `input_types` can be deduced from those.  Note that
+                ``func`` has type annotations, ``input_types`` can be deduced from those.  Note that
                 if the type annotation doesn't match what you want the arguments to be, you need
-                to specify manually, for instance a function add(x: T.Any, y: T.Any) -> T.Any that
-                you want to use to generate add(x: sf.Matrix33, y: sf.Matrix33) -> sf.Matrix33
+                to specify manually, for instance a function ``add(x: T.Any, y: T.Any) -> T.Any``
+                that you want to use to generate
+                ``add(x: sf.Matrix33, y: sf.Matrix33) -> sf.Matrix33``
             config: Programming language and configuration in which the function is to be generated
             name: Name of the function to be generated; if not provided, will be deduced from the
-                function name.  Must be provided if `func` is a lambda
-            output_names: Names to give to outputs returned from `func`.  If None (the default),
-                names will be chosen as f"res{i}" for functions that return multiple results, or
-                "res" for functions that return a single result
+                function name.  Must be provided if ``func`` is a lambda
+            output_names: Names to give to outputs returned from ``func``.  If ``None`` (the
+                default), names will be chosen as ``f"res{i}"`` for functions that return multiple
+                results, or ``"res"`` for functions that return a single result
             sparse_matrices: Outputs with this key will be returned as sparse matrices
             return_key: If multiple objects are returned, the generated function will return
-                the object with this name (must be in output_names)
+                the object with this name (must be in ``output_names``)
             docstring: The docstring to be used with the generated function.  Default is to use the
                        existing docstring
         """
@@ -367,6 +367,9 @@ class Codegen:
         data["python_util"] = python_util
         data["typing_util"] = typing_util
         data["lcm_type_t_include_dir"] = "<lcmtypes/sym/type_t.hpp>"
+
+        # TODO(aaron): Replace uses of members of sf above
+        data["sf"] = sf
 
         def is_symbolic(T: T.Any) -> bool:
             return isinstance(T, (sf.Expr, sf.Symbol))
@@ -450,15 +453,17 @@ class Codegen:
         """
         Generates a function that computes the given outputs from the given inputs.
 
-        Usage for generating multiple functions with a shared type:
+        Usage for generating multiple functions with a shared type::
+
             codegen_obj_1.generate_function(namespace="my_namespace")
             shared_types = {"my_type": "my_namespace.my_type_t"}
             codegen_obj_2.generate_function(shared_types=shared_types, namespace="my_namespace")
 
-        In the example above, both codegen_obj_1 and codegen_obj_2 use the type "my_type". During
-        the first call to "generate_function" we generate the type "my_type", and it then becomes
-        a shared type for the second call to "generate_function". This signals that "my_type" does
-        not need to be generated during the second call to "generate_function" as it already exists.
+        In the example above, both ``codegen_obj_1`` and ``codegen_obj_2`` use the type
+        ``"my_type"``. During the first call to :meth:`generate_function` we generate the type
+        ``"my_type"``, and it then becomes a shared type for the second call to
+        :meth:`generate_function`. This signals that ``"my_type"`` does not need to be generated
+        during the second call to :meth:`generate_function` as it already exists.
 
         Args:
             output_dir: Directory in which to output the generated function. Any generated types will
@@ -502,7 +507,7 @@ class Codegen:
         # List of (template_path, output_path, data, template_dir)
         templates = template_util.TemplateList()
 
-        # Determine types we need to generate as dependencies
+        # Determine the types we need as dependencies
         values_indices = {name: gen_type.index() for name, gen_type in self._get_types_to_generate()}
 
         # Generate types from the Values objects in our inputs and outputs
@@ -521,12 +526,10 @@ class Codegen:
         self.typenames_dict = types_codegen_data.typenames_dict
         # Maps typenames to namespaces
         self.namespaces_dict = types_codegen_data.namespaces_dict
-        assert self.namespaces_dict is not None
-        self.unique_namespaces = set(self.namespaces_dict.values())
 
         # Namespace of this function + generated types
         self.namespace = namespace
-
+        
         out_function_dir, generated_files = self._render_templates(
             generated_file_name=generated_file_name,
             skip_directory_nesting=skip_directory_nesting,
@@ -534,19 +537,20 @@ class Codegen:
             templates=templates)
 
         lcm_data = codegen_util.generate_lcm_types(
-            lcm_type_dir=types_codegen_data["lcm_type_dir"],
-            lcm_files=types_codegen_data["lcm_files"],
-            lcm_output_dir=types_codegen_data["lcm_bindings_output_dir"],
-        )
-        return GeneratedPaths(
-            output_dir=output_dir,
-            lcm_type_dir=Path(types_codegen_data["lcm_type_dir"]),
-            function_dir=out_function_dir,
-            python_types_dir=lcm_data["python_types_dir"],
-            cpp_types_dir=lcm_data["cpp_types_dir"],
-            generated_files=generated_files,
+            lcm_type_dir=types_codegen_data.lcm_type_dir,
+            lcm_files=types_codegen_data.lcm_files,
+            lcm_output_dir=types_codegen_data.lcm_bindings_output_dir,
         )
 
+        return GeneratedPaths(
+            output_dir=output_dir,
+            lcm_type_dir=types_codegen_data.lcm_type_dir,
+            function_dir=out_function_dir,
+            python_types_dir=lcm_data.python_types_dir,
+            cpp_types_dir=lcm_data.cpp_types_dir,
+            generated_files=generated_files,
+        )
+    
     def generate_function_no_lcm(
         self,
         output_dir: T.Openable = None,
@@ -554,21 +558,18 @@ class Codegen:
         namespace: str = "sym",
         generated_file_name: str = None,
         skip_directory_nesting: bool = False,
-    ) -> T.Tuple[GeneratedPaths, T.Dict[str, TypeDescription]]:
+    ) -> GeneratedPaths:
         """
         Generates a function that computes the given outputs from the given inputs. This variant
         avoids creating any LCM types in the process.
-
         Usage for generating multiple functions with a shared type:
             codegen_obj_1.generate_function(namespace="my_namespace")
             shared_types = {"my_type": "my_namespace.my_type_t"}
             codegen_obj_2.generate_function(shared_types=shared_types, namespace="my_namespace")
-
         In the example above, both codegen_obj_1 and codegen_obj_2 use the type "my_type". During
         the first call to "generate_function" we generate the type "my_type", and it then becomes
         a shared type for the second call to "generate_function". This signals that "my_type" does
         not need to be generated during the second call to "generate_function" as it already exists.
-
         Args:
             output_dir: Directory in which to output the generated function. Any generated types will
                 be located in a subdirectory with name equal to the namespace argument.
@@ -584,11 +585,23 @@ class Codegen:
             self.name is not None
         ), "Name should be set either at construction or by with_jacobians"
 
+        if not self.name.isidentifier():
+            raise InvalidNameError(
+                f'Invalid function name "{self.name}". `name` must be a valid identifier.'
+            )
+
+        if not namespace.isidentifier():
+            raise InvalidNamespaceError(
+                f'Invalid namespace "{namespace}".  `namespace` must be a valid identifier (nested '
+                "namespaces are not supported)"
+            )
+
         output_dir = self._maybe_create_output_dir(output_dir=output_dir)
+
         if generated_file_name is None:
             generated_file_name = self.name
 
-        # Determine types we need to generate as dependencies
+        # Determine the types we need as dependencies
         values_indices = {name: gen_type.index() for name, gen_type in self._get_types_to_generate()}
 
         # Generate types from the Values objects in our inputs and outputs
@@ -606,8 +619,7 @@ class Codegen:
 
         # Namespace of this function + generated types
         self.namespace = namespace
-
-        # Render the jinja templates
+        
         out_function_dir, generated_files = self._render_templates(
             generated_file_name=generated_file_name,
             skip_directory_nesting=skip_directory_nesting,
@@ -620,8 +632,9 @@ class Codegen:
             python_types_dir=Path(),
             cpp_types_dir=Path(),
             generated_files=generated_files,
-        ), types_dict
-
+        )
+    
+    
     def _render_templates(self,
                           generated_file_name: str,
                           skip_directory_nesting: bool,
@@ -656,6 +669,7 @@ class Codegen:
         if templates is None:
             # List of (template_path, output_path, data)
             templates = template_util.TemplateList()
+            
         for source, dest in self.config.templates_to_render(generated_file_name):
             templates.add(
                 template_path=source,
@@ -667,21 +681,7 @@ class Codegen:
 
         # Render
         templates.render()
-
-        lcm_data = codegen_util.generate_lcm_types(
-            lcm_type_dir=types_codegen_data.lcm_type_dir,
-            lcm_files=types_codegen_data.lcm_files,
-            lcm_output_dir=types_codegen_data.lcm_bindings_output_dir,
-        )
-
-        return GeneratedPaths(
-            output_dir=output_dir,
-            lcm_type_dir=types_codegen_data.lcm_type_dir,
-            function_dir=out_function_dir,
-            python_types_dir=lcm_data.python_types_dir,
-            cpp_types_dir=lcm_data.cpp_types_dir,
-            generated_files=[Path(v.output_path) for v in templates.items],
-        )
+        return out_function_dir, [Path(v.output_path) for v in templates.items]
     
     def _maybe_create_output_dir(self, output_dir: T.Optional[T.Openable]) -> Path:
         """
@@ -811,10 +811,10 @@ class Codegen:
         create a new codegen object that additionally computes the jacobian (or the full
         Gauss-Newton linearization) with respect to the given input arguments.
 
-        The jacobians are in the tangent spaces of the inputs and outputs, see jacobian_helpers.py
-        for more information.
+        The jacobians are in the tangent spaces of the inputs and outputs, see
+        :mod:`jacobian_helpers.py <symforce.jacobian_helpers>` for more information.
 
-        The previous codegen object (the `self` argument to this function) is unmodified by this
+        The previous codegen object (the ``self`` argument to this function) is unmodified by this
         function and still valid after this function returns.
 
         Args:

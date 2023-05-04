@@ -69,7 +69,7 @@ TEST_CASE("Test nonlinear convergence", "[optimizer]") {
   params.use_unit_damping = true;
 
   // Optimize
-  Optimize(params, factors, &values);
+  Optimize(params, factors, values);
 
   // Check results
   spdlog::debug("Optimized values: {}", values);
@@ -154,7 +154,7 @@ TEST_CASE("Test pose smoothing", "[optimizer]") {
   sym::Optimizer<double> optimizer(params, factors, epsilon, "sym::Optimize", {},
                                    /* debug_stats */ false, /* check_derivatives */ true,
                                    /* include_jacobians */ true);
-  const auto stats = optimizer.Optimize(&values);
+  const auto stats = optimizer.Optimize(values);
 
   spdlog::debug("Optimized values: {}", values);
 
@@ -169,7 +169,7 @@ TEST_CASE("Test pose smoothing", "[optimizer]") {
   CHECK(last_iter.new_error == Catch::Approx(7.801).epsilon(1e-3));
 
   // Check that H = J^T J
-  const sym::Linearizationd linearization = sym::Linearize<double>(factors, values);
+  const sym::SparseLinearizationd linearization = sym::Linearize<double>(factors, values);
   const Eigen::SparseMatrix<double> jtj =
       linearization.jacobian.transpose() * linearization.jacobian;
   CHECK(linearization.hessian_lower.triangularView<Eigen::Lower>().isApprox(
@@ -245,7 +245,7 @@ TEST_CASE("Test Rotation smoothing", "[optimizer]") {
   params.early_exit_min_reduction = 0.0001;
 
   sym::Optimizer<double> optimizer(params, factors, epsilon);
-  const auto stats = optimizer.Optimize(&values);
+  const auto stats = optimizer.Optimize(values);
 
   spdlog::debug("Optimized values: {}", values);
 
@@ -260,7 +260,7 @@ TEST_CASE("Test Rotation smoothing", "[optimizer]") {
   CHECK(last_iter.new_error == Catch::Approx(2.174).epsilon(1e-3));
 
   // Check that H = J^T J
-  const sym::Linearizationd linearization = sym::Linearize<double>(factors, values);
+  const sym::SparseLinearizationd linearization = sym::Linearize<double>(factors, values);
   const Eigen::SparseMatrix<double> jtj =
       linearization.jacobian.transpose() * linearization.jacobian;
   CHECK(linearization.hessian_lower.triangularView<Eigen::Lower>().isApprox(
@@ -330,7 +330,7 @@ TEST_CASE("Test nontrivial (frozen, out-of-order) keys", "[optimizer]") {
   }
 
   sym::Optimizer<double> optimizer(params, factors, epsilon, "sym::Optimizer", optimized_keys);
-  const auto stats = optimizer.Optimize(&values);
+  const auto stats = optimizer.Optimize(values);
 
   spdlog::debug("Optimized values: {}", values);
 
@@ -345,7 +345,8 @@ TEST_CASE("Test nontrivial (frozen, out-of-order) keys", "[optimizer]") {
   CHECK(last_iter.new_error < 1e-15);
 
   // Check that H = J^T J
-  const sym::Linearizationd linearization = sym::Linearize<double>(factors, values, optimized_keys);
+  const sym::SparseLinearizationd linearization =
+      sym::Linearize<double>(factors, values, optimized_keys);
   const Eigen::SparseMatrix<double> jtj =
       linearization.jacobian.transpose() * linearization.jacobian;
   CHECK(linearization.hessian_lower.triangularView<Eigen::Lower>().isApprox(

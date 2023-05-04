@@ -3,10 +3,15 @@
  * This source code is under the Apache 2.0 license found in the LICENSE file.
  * ---------------------------------------------------------------------------- */
 
+#pragma once
+
+#include <stdexcept>
+
 #include <fmt/format.h>
 #include <fmt/ostream.h>
 
 #include "./assert.h"
+#include "./values.h"
 
 /**
  * Template method implementations for Values.
@@ -54,6 +59,15 @@ template <typename Derived>
 std::enable_if_t<kIsEigenType<Derived>, bool> Values<Scalar>::Set(const Key& key,
                                                                   const Derived& value) {
   return SetInternal<typename Derived::PlainMatrix>(key, value);
+}
+
+template <typename Scalar>
+template <typename T>
+void Values<Scalar>::SetNew(const Key& key, T&& value) {
+  const auto added = Set(key, std::forward<T>(value));
+  if (!added) {
+    throw std::runtime_error(fmt::format("Key {} already exists", key));
+  }
 }
 
 template <typename Scalar>
@@ -119,19 +133,5 @@ void Values<Scalar>::SetInternal(const index_entry_t& entry, const T& value) {
   SYM_ASSERT((entry.offset + entry.storage_dim <= static_cast<int>(data_.size())));
   StorageOps<T>::ToStorage(value, data_.data() + entry.offset);
 }
-
-// ----------------------------------------------------------------------------
-// LCM type alias
-// ----------------------------------------------------------------------------
-
-template <>
-struct ValuesLcmTypeHelper<double> {
-  using Type = values_t;
-};
-
-template <>
-struct ValuesLcmTypeHelper<float> {
-  using Type = valuesf_t;
-};
 
 }  // namespace sym

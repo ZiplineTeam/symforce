@@ -9,7 +9,7 @@
 
 include(FetchContent)
 
-find_package(pybind11 QUIET)
+find_package(pybind11 2.9.2 QUIET)
 if (NOT pybind11_FOUND)
   message(STATUS "pybind11 not found, adding with FetchContent")
   # NOTE(brad): Set PYTHON_EXECUTABLE to ensure pybind11 uses the same
@@ -17,8 +17,8 @@ if (NOT pybind11_FOUND)
   set(PYTHON_EXECUTABLE ${SYMFORCE_PYTHON})
   FetchContent_Declare(
     pybind11
-    GIT_REPOSITORY https://github.com/pybind/pybind11
-    GIT_TAG 914c06fb252b6cc3727d0eedab6736e88a3fcb01 # release 2.9.2
+    URL https://github.com/pybind/pybind11/archive/v2.9.2.zip
+    URL_HASH SHA256=d1646e6f70d8a3acb2ddd85ce1ed543b5dd579c68b8fb8e9638282af20edead8
   )
   FetchContent_MakeAvailable(pybind11)
 else()

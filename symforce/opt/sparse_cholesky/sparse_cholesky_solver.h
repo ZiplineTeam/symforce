@@ -96,7 +96,7 @@ class SparseCholeskySolver {
 
   // Solves in place for x in A x = b, where x and b are dense
   template <typename Rhs>
-  void SolveInPlace(Eigen::MatrixBase<Rhs>* const b) const;
+  void SolveInPlace(Eigen::MatrixBase<Rhs>& b) const;
 
   const CholMatrixType& L() const {
     SYM_ASSERT(IsInitialized());
@@ -155,5 +155,10 @@ class SparseCholeskySolver {
 }  // namespace sym
 
 // Include implementation, yay templates.
-#define SYM_SPARSE_CHOLESKY_SOLVER_H
 #include "./sparse_cholesky_solver.tcc"
+
+// Explicit template instantiation declarations
+extern template class sym::SparseCholeskySolver<Eigen::SparseMatrix<double>, Eigen::Upper>;
+extern template class sym::SparseCholeskySolver<Eigen::SparseMatrix<double>, Eigen::Lower>;
+extern template class sym::SparseCholeskySolver<Eigen::SparseMatrix<float>, Eigen::Upper>;
+extern template class sym::SparseCholeskySolver<Eigen::SparseMatrix<float>, Eigen::Lower>;

@@ -25,13 +25,14 @@ class PythonConfig(CodegenConfig):
         use_eigen_types: Use eigen_lcm types for vectors instead of lists
         autoformat: Run a code formatter on the generated code
         custom_preamble: An optional string to be prepended on the front of the rendered template
-        cse_optimizations: Optimizations argument to pass to sf.cse
+        cse_optimizations: Optimizations argument to pass to :func:`sf.cse <symforce.symbolic.cse>`
         zero_epsilon_behavior: What should codegen do if a default epsilon is not set?
-        use_numba: Add the `@numba.njit` decorator to generated functions.  This will greatly
+        use_numba: Add the ``@numba.njit`` decorator to generated functions.  This will greatly
                    speed up functions by compiling them to machine code, but has large overhead
                    on the first call and some overhead on subsequent calls, so it should not be
-                   used for small functions or functions that are only called a handfull of
-                   times.
+                   used for small functions or functions that are only called a handful of
+                   times.  It also currently requires the the inputs and outputs of the function are
+                   scalars, vectors, or matrices.
         reshape_vectors: Allow rank 1 ndarrays to be passed in for row and column vectors by
                          automatically reshaping the input.
         return_2d_vectors: Return all matrices as 2d ndarrays if True. If False and a matrix has

@@ -3,6 +3,11 @@
  * This source code is under the Apache 2.0 license found in the LICENSE file.
  * ---------------------------------------------------------------------------- */
 
+#pragma once
+
+#include <tuple>
+#include <utility>
+
 #include <Eigen/Sparse>
 #include <fmt/ranges.h>
 #include <spdlog/spdlog.h>
@@ -199,52 +204,109 @@ void ComputeKeyHelperSparseMap(
   }
 }
 
-template <typename Scalar, typename LinearizedFactorT, typename FactorHelperT>
-FactorHelperT ComputeFactorHelper(const LinearizedFactorT& factor,
-                                  const std::unordered_map<key_t, index_entry_t>& state_index,
-                                  const std::string& linearizer_name,
-                                  int& combined_residual_offset) {
-  FactorHelperT factor_helper;
+/**
+ * For each key in both linearized_keys and the state_index calculates:
+ * { offset relative to the factor's state vector, offset relative to the problem state
+ * vector (as determined by the state_index), the tangent dimension of the key }.
+ *
+ * Returns the total tangent dimension of all the linearized_keys (regardless of whether
+ * they are in state_index), and a vector of the calculated offsets.
+ *
+ * Order of the offsets in the returned vector matches the order of linearized_keys. Since
+ * the factor's state vector is the vector of values of the linearized keys (in order), the
+ * factor_offsets in the returned vector are strictly increasing.
+ *
+ * Example Offset types:
+ *  - key_offset_t
+ *  - linearization_dense_key_helper_t
+ */
+template <typename Offset, typename Scalar>
+std::pair<std::vector<Offset>, int> FactorOffsets(
+    const Values<Scalar>& problem_values, const std::vector<Key>& linearized_keys,
+    const std::unordered_map<key_t, index_entry_t>& state_index) {
+  std::pair<std::vector<Offset>, int> offsets_and_tangent_dim;
+  std::vector<Offset>& offsets = offsets_and_tangent_dim.first;
 
-  factor_helper.residual_dim = factor.residual.rows();
-  factor_helper.combined_residual_offset = combined_residual_offset;
-
-  for (int key_i = 0; key_i < static_cast<int>(factor.index.entries.size()); ++key_i) {
-    const index_entry_t& entry = factor.index.entries[key_i];
-
-    const bool key_is_optimized = state_index.count(entry.key) > 0;
-    if (!key_is_optimized) {
+  auto factor_offset = 0;
+  for (const Key& key : linearized_keys) {
+    const auto iterator_to_entry = state_index.find(key.GetLcmType());
+    if (iterator_to_entry == state_index.end()) {
+      // The key is not optimized, but we still need its size
+      factor_offset += problem_values.IndexEntryAt(key).tangent_dim;
       continue;
     }
 
-    factor_helper.key_helpers.emplace_back();
-    auto& key_helper = factor_helper.key_helpers.back();
+    const index_entry_t& entry = iterator_to_entry->second;
+
+    offsets.emplace_back();
+    Offset& offset_info = offsets.back();
 
     // Offset of this key within the factor's state
-    key_helper.factor_offset = entry.offset;
-    key_helper.tangent_dim = entry.tangent_dim;
+    offset_info.factor_offset = factor_offset;
+    offset_info.tangent_dim = entry.tangent_dim;
 
     // Offset of this key within the combined state
-    key_helper.combined_offset = state_index.at(entry.key).offset;
+    offset_info.combined_offset = entry.offset;
+
+    factor_offset += entry.tangent_dim;
   }
 
+  offsets_and_tangent_dim.second = factor_offset;
+
+  return offsets_and_tangent_dim;
+}
+
+/**
+ * Returns a factor_helper with a subset of its fields filled, along with the
+ * tangent dimension of the factor (according to what the Values says it should
+ * be given its keys), and updates the combined_residual_offset.
+ */
+template <typename FactorHelperT, typename Scalar, typename LinearizedFactorT>
+std::pair<FactorHelperT, int> ComputeFactorHelper(
+    const LinearizedFactorT& factor, const Values<Scalar>& problem_values,
+    const std::vector<Key>& linearized_keys,
+    const std::unordered_map<key_t, index_entry_t>& state_index, const std::string& linearizer_name,
+    int& combined_residual_offset) {
+  std::pair<FactorHelperT, int> helper_and_dimension;
+  FactorHelperT& factor_helper = helper_and_dimension.first;
+
+  factor_helper.combined_residual_offset = combined_residual_offset;
+  factor_helper.residual_dim = factor.residual.rows();
   // Increment offset into the combined residual
   combined_residual_offset += factor_helper.residual_dim;
 
+  std::tie(factor_helper.key_helpers, helper_and_dimension.second) =
+      FactorOffsets<typename decltype(factor_helper.key_helpers)::value_type>(
+          problem_values, linearized_keys, state_index);
+
   // Warn if this factor touches no optimized keys
   if (factor_helper.key_helpers.empty()) {
-    std::vector<key_t> input_keys;
-    for (const auto& entry : factor.index.entries) {
-      input_keys.push_back(entry.key);
-    }
-
     spdlog::warn(
         "LM<{}>: Optimizing a factor that touches no optimized keys! Input keys for the factor "
         "are: {}",
-        linearizer_name, input_keys);
+        linearizer_name, linearized_keys);
   }
 
-  return factor_helper;
+  return helper_and_dimension;
+}
+
+/**
+ * Performs a sanity check on the dimensions of the residual, jacobian, hessian, and rhs.
+ * Asserts that their shapes match the cumulative tangent_dim of all the optimized arguments.
+ *
+ * Also checks consistency of residual dimension.
+ */
+template <typename LinearizedFactorType>
+void AssertConsistentShapes(const int tangent_dim, const LinearizedFactorType& linearized_factor,
+                            const bool check_jacobian) {
+  // NOTE(brad): Conditionally check jacobian shape because it may not have beeen evaluated.
+  if (check_jacobian) {
+    SYM_ASSERT(linearized_factor.residual.rows() == linearized_factor.jacobian.rows());
+    SYM_ASSERT(tangent_dim == linearized_factor.jacobian.cols());
+  }
+  SYM_ASSERT(tangent_dim == linearized_factor.hessian.rows());
+  SYM_ASSERT(tangent_dim == linearized_factor.hessian.cols());
+  SYM_ASSERT(tangent_dim == linearized_factor.rhs.rows());
 }
 
 }  // namespace internal

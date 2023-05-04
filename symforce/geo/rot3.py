@@ -86,14 +86,12 @@ class Rot3(LieGroup):
         assert theta != 0, "Trying to divide by zero, provide epsilon!"
         return cls(Quaternion(xyz=sf.sin(theta / 2) / theta * vm, w=sf.cos(theta / 2)))
 
-    def logmap_acos_clamp_max(self, epsilon: T.Scalar = sf.epsilon()) -> T.List[T.Scalar]:
-        """
-        Implementation of logmap that uses epsilon with the Min function to
-        avoid the singularity in the sqrt at w == 1
-
-        Also flips the sign of the quaternion of w is negative, which makes sure
-        that the resulting tangent vector has norm <= pi
-        """
+    def to_tangent(self, epsilon: T.Scalar = sf.epsilon()) -> T.List[T.Scalar]:
+        # Implementation of logmap that uses epsilon with the Min function to
+        # avoid the singularity in the sqrt at w == 1
+        #
+        # Also flips the sign of the quaternion of w is negative, which makes sure
+        # that the resulting tangent vector has norm <= pi
         w_positive = sf.Abs(self.q.w)
         w_safe = sf.Min(1 - epsilon, w_positive)
         xyz_w_positive = self.q.xyz * sf.sign_no_zero(self.q.w)
@@ -101,16 +99,13 @@ class Rot3(LieGroup):
         tangent = 2 * xyz_w_positive / norm * sf.acos(w_safe)
         return tangent.to_storage()
 
-    def to_tangent(self, epsilon: T.Scalar = sf.epsilon()) -> T.List[T.Scalar]:
-        return self.logmap_acos_clamp_max(epsilon=epsilon)
-
     @classmethod
     def hat(cls, vec: T.Sequence[T.Scalar]) -> Matrix33:
         return Matrix33([[0, -vec[2], vec[1]], [vec[2], 0, -vec[0]], [-vec[1], vec[0], 0]])
 
     def storage_D_tangent(self) -> Matrix43:
         """
-        Note: generated from symforce/notebooks/storage_D_tangent.ipynb
+        Note: generated from ``symforce/notebooks/storage_D_tangent.ipynb``
         """
         return (
             sf.S.One
@@ -127,7 +122,7 @@ class Rot3(LieGroup):
 
     def tangent_D_storage(self) -> Matrix34:
         """
-        Note: generated from symforce/notebooks/tangent_D_storage.ipynb
+        Note: generated from ``symforce/notebooks/tangent_D_storage.ipynb``
         """
         return 4 * T.cast(Matrix34, self.storage_D_tangent().T)
 

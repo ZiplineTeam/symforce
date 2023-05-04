@@ -13,9 +13,6 @@
 namespace sym {
 
 template <typename Scalar>
-Values<Scalar>::Values() {}
-
-template <typename Scalar>
 Values<Scalar>::Values(std::initializer_list<Values<Scalar>> others) {
   for (const auto& other : others) {
     // add in the Keys with a different offset
@@ -65,7 +62,7 @@ void Values<Scalar>::UpdateOrSet(const index_t& index, const Values<Scalar>& oth
 }
 
 template <typename Scalar>
-int32_t Values<Scalar>::NumEntries() const {
+size_t Values<Scalar>::NumEntries() const {
   return map_.size();
 }
 
@@ -173,16 +170,21 @@ index_entry_t Values<Scalar>::IndexEntryAt(const Key& key) const {
 }
 
 template <typename Scalar>
+void Values<Scalar>::FillLcmType(LcmType& msg, bool sort_keys) const {
+  msg.index = CreateIndex(Keys(sort_keys));
+  msg.data = data_;
+}
+
+template <typename Scalar>
 void Values<Scalar>::FillLcmType(LcmType* msg, bool sort_keys) const {
   SYM_ASSERT(msg != nullptr);
-  msg->index = CreateIndex(Keys(sort_keys));
-  msg->data = data_;
+  FillLcmType(*msg, sort_keys);
 }
 
 template <typename Scalar>
 typename Values<Scalar>::LcmType Values<Scalar>::GetLcmType(bool sort_keys) const {
   LcmType msg;
-  FillLcmType(&msg, sort_keys);
+  FillLcmType(msg, sort_keys);
   return msg;
 }
 

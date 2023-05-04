@@ -23,9 +23,6 @@ from symforce.codegen import template_util
 from symforce.codegen.ops_codegen_util import make_group_ops_funcs
 from symforce.codegen.ops_codegen_util import make_lie_group_ops_funcs
 
-# Default geo types to generate
-DEFAULT_GEO_TYPES = (sf.Rot2, sf.Pose2, sf.Rot3, sf.Pose3, sf.Unit3)
-
 
 def geo_class_common_data(cls: T.Type, config: CodegenConfig) -> T.Dict[str, T.Any]:
     """
@@ -91,41 +88,51 @@ def _custom_generated_methods(config: CodegenConfig) -> T.Dict[T.Type, T.List[Co
             config=config,
         )
 
-    rot3_functions = [
-        codegen_mul(sf.Rot3, sf.Vector3),
-        Codegen.function(func=sf.Rot3.to_rotation_matrix, config=config),
-        Codegen.function(
-            func=functools.partial(sf.Rot3.random_from_uniform_samples, pi=sf.pi),
-            name="random_from_uniform_samples",
-            config=config,
-        ),
-        Codegen.function(
-            # TODO(aaron): We currently can't generate custom methods with defaults - fix this, and
-            # pass epsilon as an argument with a default
-            func=lambda self: sf.V3(self.to_yaw_pitch_roll(epsilon=0)),
-            input_types=[sf.Rot3],
-            name="to_yaw_pitch_roll",
-            config=config,
-        ),
-        Codegen.function(func=sf.Rot3.from_yaw_pitch_roll, config=config),
-    ]
-
-    # TODO(brad): We don't currently generate this in python because python (unlike C++)
-    # has no function overloading, and we already generate a from_yaw_pitch_roll which
-    # instead takes yaw, pitch, and roll as seperate arguments. Figure out how to allow
-    # this overload to better achieve parity between C++ and python.
-    if isinstance(config, PythonConfig):
-        pass
-        # rot3_functions.insert(2, Codegen.function(func=sf.Rot3.from_rotation_matrix, config=config))
-    else:
-        rot3_functions.append(
+    rot3_functions = (
+        [
+            codegen_mul(sf.Rot3, sf.Vector3),
+            Codegen.function(func=sf.Rot3.to_rotation_matrix, config=config),
             Codegen.function(
-                func=lambda ypr: sf.Rot3.from_yaw_pitch_roll(*ypr),
-                input_types=[sf.V3],
-                name="from_yaw_pitch_roll",
+                func=functools.partial(sf.Rot3.random_from_uniform_samples, pi=sf.pi),
+                name="random_from_uniform_samples",
                 config=config,
             ),
+            Codegen.function(
+                # TODO(aaron): We currently can't generate custom methods with defaults - fix this, and
+                # pass epsilon as an argument with a default
+                func=lambda self: sf.V3(self.to_yaw_pitch_roll(epsilon=0)),
+                input_types=[sf.Rot3],
+                name="to_yaw_pitch_roll",
+                config=config,
+            ),
+            Codegen.function(func=sf.Rot3.from_yaw_pitch_roll, config=config),
+        ]
+        + (
+            # TODO(brad): We don't currently generate this in python because python (unlike C++)
+            # has no function overloading, and we already generate a from_yaw_pitch_roll which
+            # instead takes yaw, pitch, and roll as seperate arguments. Figure out how to allow
+            # this overload to better achieve parity between C++ and python.
+            [
+                Codegen.function(
+                    func=lambda ypr: sf.Rot3.from_yaw_pitch_roll(*ypr),
+                    input_types=[sf.V3],
+                    name="from_yaw_pitch_roll",
+                    config=config,
+                )
+            ]
+            if isinstance(config, CppConfig)
+            else []
         )
+        + (
+            # In C++, we do this with Eigen
+            [Codegen.function(func=sf.Rot3.from_angle_axis, config=config)]
+            if isinstance(config, PythonConfig)
+            else []
+        )
+        + [
+            Codegen.function(func=sf.Rot3.from_two_unit_vectors, config=config),
+        ]
+    )
 
     def pose_getter_methods(pose_type: T.Type) -> T.List[Codegen]:
         def rotation(self: T.Any) -> T.Any:
@@ -175,8 +182,6 @@ def _custom_generated_methods(config: CodegenConfig) -> T.Dict[T.Type, T.List[Co
 def generate(config: CodegenConfig, output_dir: Path = None) -> Path:
     """
     Generate the geo package for the given language.
-
-    TODO(hayk): Take scalar_type list here.
     """
     # Create output directory if needed
     if output_dir is None:
@@ -197,7 +202,7 @@ def generate(config: CodegenConfig, output_dir: Path = None) -> Path:
 
         # Build up templates for each type
 
-        for cls in DEFAULT_GEO_TYPES:
+        for cls in sf.GEO_TYPES:
             data = geo_class_common_data(cls, config)
             data["matrix_type_aliases"] = matrix_type_aliases.get(cls, {})
             data["custom_generated_methods"] = custom_generated_methods.get(cls, {})
@@ -230,7 +235,7 @@ def generate(config: CodegenConfig, output_dir: Path = None) -> Path:
             template_path=Path("geo_package", "__init__.py.jinja"),
             data=dict(
                 Codegen.common_data(),
-                all_types=DEFAULT_GEO_TYPES,
+                all_types=sf.GEO_TYPES,
                 numeric_epsilon=sf.numeric_epsilon,
             ),
             config=config.render_template_config,
@@ -241,7 +246,7 @@ def generate(config: CodegenConfig, output_dir: Path = None) -> Path:
         for name in ("geo_package_python_test.py",):
             templates.add(
                 template_path=Path("tests", name + ".jinja"),
-                data=dict(Codegen.common_data(), all_types=DEFAULT_GEO_TYPES),
+                data=dict(Codegen.common_data(), all_types=sf.GEO_TYPES),
                 config=config.render_template_config,
                 output_path=output_dir / "tests" / name,
             )
@@ -255,7 +260,7 @@ def generate(config: CodegenConfig, output_dir: Path = None) -> Path:
         logger.debug(f'Creating C++ package at: "{package_dir}"')
 
         # Build up templates for each type
-        for cls in DEFAULT_GEO_TYPES:
+        for cls in sf.GEO_TYPES:
             data = geo_class_common_data(cls, config)
             data["matrix_type_aliases"] = matrix_type_aliases.get(cls, {})
             data["custom_generated_methods"] = custom_generated_methods.get(cls, {})
@@ -300,10 +305,10 @@ def generate(config: CodegenConfig, output_dir: Path = None) -> Path:
                 output_path=output_dir / "tests" / name,
                 data=dict(
                     Codegen.common_data(),
-                    all_types=DEFAULT_GEO_TYPES,
+                    all_types=sf.GEO_TYPES,
                     cpp_geo_types=[
                         f"sym::{cls.__name__}<{scalar}>"
-                        for cls in DEFAULT_GEO_TYPES
+                        for cls in sf.GEO_TYPES
                         for scalar in data["scalar_types"]
                     ],
                     cpp_matrix_types=[

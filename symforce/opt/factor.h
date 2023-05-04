@@ -6,6 +6,7 @@
 #pragma once
 
 #include <ostream>
+#include <unordered_set>
 
 #include <Eigen/Sparse>
 
@@ -27,8 +28,6 @@ struct LinearizedSparseFactorTypeHelper;
 // NOTE(aaron): Unlike the dense versions of these, we don't have SparseMatrix eigen_lcm types, so
 // we just defined these as structs, since we don't need to serialize them anyway
 struct linearized_sparse_factor_t {
-  index_t index;
-
   Eigen::VectorXd residual;              // b
   Eigen::SparseMatrix<double> jacobian;  // J
   Eigen::SparseMatrix<double> hessian;   // H, JtJ
@@ -40,8 +39,6 @@ struct linearized_sparse_factor_t {
 };
 
 struct linearized_sparse_factorf_t {
-  index_t index;
-
   Eigen::VectorXf residual;             // b
   Eigen::SparseMatrix<float> jacobian;  // J
   Eigen::SparseMatrix<float> hessian;   // H, JtJ
@@ -105,7 +102,7 @@ class Factor {
   // Constructors
   // ----------------------------------------------------------------------------------------------
 
-  Factor() {}
+  Factor() = default;
 
   /**
    * Create directly from a (dense/sparse) hessian functor. This is the lowest-level constructor.
@@ -247,7 +244,7 @@ class Factor {
    *         prevents repeated hash lookups.  Can be computed as
    *         `values.CreateIndex(factor.AllKeys()).entries`.
    */
-  void Linearize(const Values<Scalar>& values, LinearizedDenseFactor* linearized_factor,
+  void Linearize(const Values<Scalar>& values, LinearizedDenseFactor& linearized_factor,
                  const std::vector<index_entry_t>* maybe_index_entry_cache = nullptr) const;
 
   /**
@@ -278,7 +275,7 @@ class Factor {
    *         prevents repeated hash lookups.  Can be computed as
    *         `values.CreateIndex(factor.AllKeys()).entries`.
    */
-  void Linearize(const Values<Scalar>& values, LinearizedSparseFactor* linearized_factor,
+  void Linearize(const Values<Scalar>& values, LinearizedSparseFactor& linearized_factor,
                  const std::vector<index_entry_t>* maybe_index_entry_cache = nullptr) const;
 
   // ----------------------------------------------------------------------------------------------
@@ -303,10 +300,6 @@ class Factor {
   const std::vector<Key>& AllKeys() const;
 
  private:
-  template <typename LinearizedFactorT>
-  void FillLinearizedFactorIndex(const Values<Scalar>& values,
-                                 LinearizedFactorT& linearized_factor) const;
-
   DenseHessianFunc hessian_func_;
   SparseHessianFunc sparse_hessian_func_;
 
@@ -333,7 +326,43 @@ std::ostream& operator<<(std::ostream& os, const sym::linearized_dense_factorf_t
 std::ostream& operator<<(std::ostream& os, const sym::linearized_sparse_factor_t& factor);
 std::ostream& operator<<(std::ostream& os, const sym::linearized_sparse_factorf_t& factor);
 
+/**
+ * Compute the combined set of keys to optimize from the given factors. Order using the given
+ * comparison function.
+ */
+template <typename Scalar, typename Compare>
+std::vector<Key> ComputeKeysToOptimize(const std::vector<Factor<Scalar>>& factors,
+                                       Compare key_compare) {
+  // Some thoughts on efficiency at
+  // https://stackoverflow.com/questions/1041620/whats-the-most-efficient-way-to-erase-duplicates-and-sort-a-vector
+
+  // Aggregate uniques
+  std::unordered_set<Key> key_set;
+  for (const Factor<Scalar>& factor : factors) {
+    key_set.insert(factor.OptimizedKeys().begin(), factor.OptimizedKeys().end());
+  }
+
+  // Copy to vector
+  std::vector<Key> keys;
+  keys.insert(keys.end(), key_set.begin(), key_set.end());
+
+  // Order
+  std::sort(keys.begin(), keys.end(), key_compare);
+
+  return keys;
+}
+
+// If no comparator is specified, use sym::Key::LexicalLessThan.
+template <typename Scalar>
+std::vector<Key> ComputeKeysToOptimize(const std::vector<Factor<Scalar>>& factors) {
+  return ComputeKeysToOptimize(factors, &sym::Key::LexicalLessThan);
+}
+
 }  // namespace sym
 
 // Template method implementations
 #include "./factor.tcc"
+
+// Explicit instantiation declarations
+extern template class sym::Factor<double>;
+extern template class sym::Factor<float>;

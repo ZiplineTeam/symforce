@@ -11,9 +11,10 @@
 #include <lcmtypes/sym/optimization_stats_t.hpp>
 #include <lcmtypes/sym/optimizer_params_t.hpp>
 
-#include "./cholesky/sparse_cholesky_solver.h"
 #include "./internal/levenberg_marquardt_state.h"
+#include "./linearization.h"
 #include "./optimization_stats.h"
+#include "./sparse_cholesky/sparse_cholesky_solver.h"
 #include "./tic_toc.h"
 #include "./values.h"
 
@@ -39,7 +40,7 @@ namespace sym {
  *   // Create a function that computes the residual (a linear residual for this example)
  *   const auto J_MN = sym::RandomNormalMatrix<double, M, N>(gen);
  *   const auto linearize_func = [&J_MN](const sym::Valuesd& values,
- *                                       sym::Linearizationd* const linearization) {
+ *                                       sym::SparseLinearizationd* const linearization) {
  *     const auto state_vec = values.At<sym::Vector5d>('v');
  *     linearization->residual = J_MN * state_vec;
  *     linearization->hessian_lower = (J_MN.transpose() * J_MN).sparseView();
@@ -122,11 +123,13 @@ class LevenbergMarquardtSolver {
  public:
   using Scalar = ScalarType;
   using LinearSolver = LinearSolverType;
-  using StateType = internal::LevenbergMarquardtState<Scalar>;
+  using MatrixType = typename LinearSolverType::MatrixType;
+  using StateType = internal::LevenbergMarquardtState<MatrixType>;
+  using LinearizationType = Linearization<MatrixType>;
 
   // Function that evaluates the objective function and produces a quadratic approximation of
   // it by linearizing a least-squares residual.
-  using LinearizeFunc = std::function<void(const Values<Scalar>&, Linearization<Scalar>* const)>;
+  using LinearizeFunc = std::function<void(const Values<Scalar>&, LinearizationType&)>;
 
   LevenbergMarquardtSolver(const optimizer_params_t& p, const std::string& id, const Scalar epsilon)
       : p_(p), id_(id), epsilon_(epsilon) {}
@@ -170,7 +173,7 @@ class LevenbergMarquardtSolver {
   void UpdateParams(const optimizer_params_t& p);
 
   // Run one iteration of the optimization. Returns true if the optimization should early exit.
-  bool Iterate(const LinearizeFunc& func, OptimizationStats<Scalar>* const stats,
+  bool Iterate(const LinearizeFunc& func, OptimizationStats<Scalar>& stats,
                const bool debug_stats = false, const bool include_jacobians = false);
 
   const Values<Scalar>& GetBestValues() const {
@@ -178,29 +181,25 @@ class LevenbergMarquardtSolver {
     return state_.Best().values;
   }
 
-  const Linearization<Scalar>& GetBestLinearization() const {
+  const LinearizationType& GetBestLinearization() const {
     SYM_ASSERT(state_.BestIsValid() && state_.Best().GetLinearization().IsInitialized());
     return state_.Best().GetLinearization();
   }
 
-  void ComputeCovariance(const Eigen::SparseMatrix<Scalar>& hessian_lower,
-                         MatrixX<Scalar>* covariance);
+  void ComputeCovariance(const MatrixType& hessian_lower, MatrixX<Scalar>& covariance);
 
  private:
-  Eigen::SparseMatrix<Scalar> DampHessian(const Eigen::SparseMatrix<Scalar>& hessian_lower,
-                                          bool* const have_max_diagonal,
-                                          VectorX<Scalar>* const max_diagonal,
-                                          const Scalar lambda) const;
+  MatrixType DampHessian(const MatrixType& hessian_lower, bool& have_max_diagonal,
+                         VectorX<Scalar>& max_diagonal, const Scalar lambda) const;
 
-  void CheckHessianDiagonal(const Eigen::SparseMatrix<Scalar>& hessian_lower_damped);
+  void CheckHessianDiagonal(const MatrixType& hessian_lower_damped);
 
-  void PopulateIterationStats(optimization_iteration_t* const iteration_stats,
-                              const StateType& state, const Scalar new_error,
-                              const Scalar relative_reduction, const bool debug_stats,
-                              const bool include_jacobians) const;
+  void PopulateIterationStats(optimization_iteration_t& iteration_stats, const StateType& state,
+                              const Scalar new_error, const Scalar relative_reduction,
+                              const bool debug_stats, const bool include_jacobians) const;
 
   void Update(const Values<Scalar>& values, const index_t& index, const VectorX<Scalar>& update,
-              Values<Scalar>* const updated_values) const;
+              Values<Scalar>& updated_values) const;
 
   optimizer_params_t p_;
   std::string id_;
@@ -228,7 +227,7 @@ class LevenbergMarquardtSolver {
 
   // Working storage to avoid reallocation
   VectorX<Scalar> update_;
-  Eigen::SparseMatrix<Scalar> H_damped_;
+  MatrixType H_damped_;
   Eigen::Array<bool, Eigen::Dynamic, 1> zero_diagonal_;
   std::vector<int> zero_diagonal_indices_;
 

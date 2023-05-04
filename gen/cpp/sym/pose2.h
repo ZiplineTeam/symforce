@@ -41,9 +41,10 @@ namespace sym {
  *
  *   - There is no hat operator, because from_tangent/to_tangent is not the matrix exp/log
  *
- * If you need a type that has these properties in symbolic expressions, you should use Pose2_SE2.
- * There is no runtime equivalent of Pose2_SE2, see the docstring on that class for more
- * information.
+ * If you need a type that has these properties in symbolic expressions, you should use
+ * :class:`symforce.geo.unsupported.pose2_se2.Pose2_SE2`. There is no runtime equivalent of
+ * :class:`Pose2_SE2 <symforce.geo.unsupported.pose2_se2.Pose2_SE2>`, see the docstring on that
+ * class for more information.
  */
 template <typename ScalarType>
 class Pose2 {
@@ -95,15 +96,15 @@ class Pose2 {
   // Custom generated methods
   // --------------------------------------------------------------------------
 
-  sym::Rot2<Scalar> Rotation() const;
+  const sym::Rot2<Scalar> Rotation() const;
 
-  Vector2 Position() const;
+  const Vector2 Position() const;
 
-  Vector2 ComposeWithPoint(const Vector2& right) const;
+  const Vector2 ComposeWithPoint(const Vector2& right) const;
 
-  Vector2 InverseCompose(const Vector2& point) const;
+  const Vector2 InverseCompose(const Vector2& point) const;
 
-  Eigen::Matrix<Scalar, 3, 3> ToHomogenousMatrix() const;
+  const Eigen::Matrix<Scalar, 3, 3> ToHomogenousMatrix() const;
 
   // --------------------------------------------------------------------------
   // StorageOps concept

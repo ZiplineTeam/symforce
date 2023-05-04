@@ -39,7 +39,7 @@ class Values {
   /**
    * Default construct as empty.
    */
-  Values();
+  Values() = default;
 
   /**
    * Construct from a list of other Values objects. The order of Keys are preserved by
@@ -82,6 +82,13 @@ class Values {
   std::enable_if_t<kIsEigenType<Derived>, bool> Set(const Key& key, const Derived& value);
 
   /**
+   * Add a value by key, throws runtime_error if the key already exists.
+   * This is useful when setting up initial values for a problem.
+   */
+  template <typename T>
+  void SetNew(const Key& key, T&& value);
+
+  /**
    * Update or add keys to this Values base on other Values of different structure.
    * index MUST be valid for other.
    *
@@ -93,7 +100,7 @@ class Values {
   /**
    * Number of keys.
    */
-  int32_t NumEntries() const;
+  size_t NumEntries() const;
 
   /**
    * Has zero keys.
@@ -237,7 +244,9 @@ class Values {
   /**
    * Serialize to LCM.
    */
-  void FillLcmType(LcmType* msg, bool sort_keys = false) const;
+  void FillLcmType(LcmType& msg, bool sort_keys = false) const;
+  [[deprecated("Pass msg by reference instead")]] void FillLcmType(LcmType* msg,
+                                                                   bool sort_keys = false) const;
   LcmType GetLcmType(bool sort_keys = false) const;
 
  protected:
@@ -258,6 +267,16 @@ class Values {
 using Valuesd = Values<double>;
 using Valuesf = Values<float>;
 
+template <>
+struct ValuesLcmTypeHelper<double> {
+  using Type = values_t;
+};
+
+template <>
+struct ValuesLcmTypeHelper<float> {
+  using Type = valuesf_t;
+};
+
 /**
  * Prints entries with their keys, data slices, and values, like:
  *
@@ -272,6 +291,15 @@ template <typename Scalar>
 std::ostream& operator<<(std::ostream& os, const Values<Scalar>& v);
 
 }  // namespace sym
+
+// Explicit instantiation declarations
+extern template class sym::Values<double>;
+extern template class sym::Values<float>;
+
+extern template sym::Values<double> sym::Values<double>::Cast<double>() const;
+extern template sym::Values<float> sym::Values<double>::Cast<float>() const;
+extern template sym::Values<double> sym::Values<float>::Cast<double>() const;
+extern template sym::Values<float> sym::Values<float>::Cast<float>() const;
 
 // Template method implementations
 #include "./values.tcc"

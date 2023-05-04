@@ -1,4 +1,8 @@
-# High level build commands for symforce
+# Development utilities for SymForce
+#
+# This plays no part in the SymForce build process.  For instructions on building SymForce (which is
+# done with CMake), see the README.  For documentation of these commands, see
+# https://symforce.org/development.html.
 
 BUILD_DIR=build
 
@@ -43,7 +47,7 @@ check_format:
 # NOTE(aaron): mypy does not recurse through directories unless they're packages, so we run `find`.
 # See https://github.com/python/mypy/issues/8548
 # We don't need to run find on `symforce` because we know the whole thing is a package
-MYPY_COMMAND=$(PYTHON) -m mypy --show-error-code
+MYPY_COMMAND=$(PYTHON) -m mypy --show-error-code --config-file=pyproject.toml
 SYMFORCE_LCMTYPES_DIR ?= build/lcmtypes/python2.7
 check_types:
 	export SYMFORCE_LCMTYPES_DIR=$(SYMFORCE_LCMTYPES_DIR); \
@@ -78,7 +82,7 @@ lint: check_types check_format pylint
 clean: docs_clean coverage_clean
 	rm -rf $(BUILD_DIR)
 
-.PHONY: all reqs format check_format check_types lint clean
+.PHONY: all reqs format check_format check_types pylint lint clean
 
 # -----------------------------------------------------------------------------
 # Tests

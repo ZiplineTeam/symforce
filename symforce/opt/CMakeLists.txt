@@ -19,9 +19,8 @@ if (NOT fmt_FOUND)
     set(FMT_INSTALL ON CACHE INTERNAL "fmt should create an install target")
     FetchContent_Declare(
       fmtlib
-      GIT_REPOSITORY https://github.com/fmtlib/fmt
-      GIT_TAG d141cdbeb0fb422a3fb7173b285fd38e0d1772dc # release 8.0.1
-      GIT_SHALLOW TRUE
+      URL https://github.com/fmtlib/fmt/archive/8.0.1.zip
+      URL_HASH SHA256=6747442c189064b857336007dd7fa3aaf58512aa1a0b2ba76bf1182eefb01025
     )
     set(CMAKE_POSITION_INDEPENDENT_CODE True)
     FetchContent_MakeAvailable(fmtlib)
@@ -44,9 +43,8 @@ if (NOT spdlog_FOUND)
     set(CMAKE_POSITION_INDEPENDENT_CODE True)
     FetchContent_Declare(
       spdlog
-      GIT_REPOSITORY https://github.com/gabime/spdlog
-      GIT_TAG v1.9.2
-      GIT_SHALLOW TRUE
+      URL https://github.com/gabime/spdlog/archive/v1.9.2.zip
+      URL_HASH SHA256=130bd593c33e2e2abba095b551db6a05f5e4a5a19c03ab31256c38fa218aa0a6
     )
     FetchContent_MakeAvailable(spdlog)
   endfunction()
@@ -66,15 +64,10 @@ if (NOT tl_optional_FOUND)
     set(OPTIONAL_BUILD_TESTS OFF CACHE INTERNAL "tl::optional shouldn't build tests")
     FetchContent_Declare(
       tl_optional
-      GIT_REPOSITORY https://github.com/TartanLlama/optional
-      # NOTE: This pulls in TartanLlama/optional#45, which is not yet in any tagged releases.
-      GIT_TAG c28fcf74d207fc667c4ed3dbae4c251ea551c8c1
-      GIT_SHALLOW TRUE
+      URL https://github.com/TartanLlama/optional/archive/v1.1.0.zip
+      URL_HASH SHA256=a336bb10f51945369c1dd6dc6d2a7086602ab9cab52c98a7a6224bfd782bc0c7
     )
     FetchContent_MakeAvailable(tl_optional)
-
-    # tl::optional does this correctly for installs, but not direct includes with FetchContent
-    add_library(tl::optional ALIAS optional)
   endfunction()
 
   add_tl_optional()
@@ -93,6 +86,7 @@ function(add_metis)
     # github, which is newer than the release on the METIS website. All of the releases on github
     # seem to have memory bugs, which do not appear in this release:
     URL https://symforce-org.github.io/downloads/metis-5.1.0.tar.gz
+    URL_HASH SHA256=76faebe03f6c963127dbb73c13eab58c9a3faeae48779f049066a21c087c5db2
     # GKlib builds some test executables we can't disable without patching
     PATCH_COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/patch_metis.sh" "${FETCHCONTENT_BASE_DIR}/metis-src"
   )
@@ -120,8 +114,8 @@ add_metis()
 # ------------------------------------------------------------------------------
 # symforce_cholesky
 
-file(GLOB SYMFORCE_CHOLESKY_SOURCES CONFIGURE_DEPENDS cholesky/*.cc)
-file(GLOB SYMFORCE_CHOLESKY_HEADERS CONFIGURE_DEPENDS cholesky/*.h cholesky/*.tcc)
+file(GLOB SYMFORCE_CHOLESKY_SOURCES CONFIGURE_DEPENDS sparse_cholesky/*.cc)
+file(GLOB SYMFORCE_CHOLESKY_HEADERS CONFIGURE_DEPENDS sparse_cholesky/*.h sparse_cholesky/*.tcc)
 add_library(
   symforce_cholesky
   ${SYMFORCE_LIBRARY_TYPE}
@@ -129,7 +123,11 @@ add_library(
   ${SYMFORCE_CHOLESKY_HEADERS}
 )
 target_compile_options(symforce_cholesky PRIVATE ${SYMFORCE_COMPILE_OPTIONS})
-target_link_libraries(symforce_cholesky metis ${SYMFORCE_EIGEN_TARGET})
+target_link_libraries(symforce_cholesky
+  fmt::fmt
+  metis
+  ${SYMFORCE_EIGEN_TARGET}
+)
 target_include_directories(symforce_cholesky PUBLIC ../..)
 
 # ------------------------------------------------------------------------------

@@ -16,7 +16,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <sym/ops/storage_ops.h>
-#include <symforce/opt/cholesky/sparse_cholesky_solver.h>
+#include <symforce/opt/sparse_cholesky/sparse_cholesky_solver.h>
 #include <symforce/opt/tic_toc.h>
 
 using SparseMatrix = Eigen::SparseMatrix<double>;
@@ -172,7 +172,7 @@ TEST_CASE("Make sure solving in place works", "[sparse_cholesky]") {
 
   solver_ac.Factorize(A);
   Eigen::MatrixXd x_ac = b;
-  solver_ac.SolveInPlace(&x_ac);
+  solver_ac.SolveInPlace(x_ac);
 
   solver_eigen.factorize(A);
   const Eigen::MatrixXd x_eigen = solver_eigen.solve(b);

@@ -6,7 +6,6 @@
 import sys
 from pathlib import Path
 
-from symforce import typing as T
 from symforce.codegen import codegen_util
 from symforce.test_util import TestCase
 
@@ -17,7 +16,7 @@ PACKAGE_NAME = "example_pkg"
 
 class SymforceCodegenUtilTest(TestCase):
     """
-    Tests contents of symforce.codegen.codgen_util.
+    Tests contents of symforce.codegen.codegen_util.
     """
 
     def test_load_generated_package(self) -> None:
