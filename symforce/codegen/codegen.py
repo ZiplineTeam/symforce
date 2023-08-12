@@ -142,6 +142,12 @@ class Codegen:
         self.inputs = inputs
         self.outputs = outputs
 
+        # determine the set of symbols that appear in the output
+        outputs_flat = codegen_util.flat_symbols_from_values(outputs)
+        self.output_symbols: T.Set[sf.Symbol] = set()
+        for output in outputs_flat:
+            self.output_symbols = self.output_symbols.union(output.atoms())
+
         # All symbols in outputs must be present in inputs
         input_symbols_list = codegen_util.flat_symbols_from_values(inputs)
         input_symbols = set(input_symbols_list)
@@ -228,16 +234,6 @@ class Codegen:
         self.namespaces_dict: T.Optional[T.Dict[str, str]] = None
         self.unique_namespaces: T.Optional[T.Set[str]] = None
         self.namespace: T.Optional[str] = None
-
-    @functools.cached_property
-    def output_symbols(self) -> T.Set[sf.Symbol]:
-        """
-        The set of free symbols in the output
-
-        Cached, because this is somewhat expensive to compute for large outputs
-        """
-        # Convert to Matrix before calling free_symbols because it's much faster to call once
-        return sf.S(sf.Matrix(codegen_util.flat_symbols_from_values(self.outputs)).mat).free_symbols
 
     @classmethod
     def function(
