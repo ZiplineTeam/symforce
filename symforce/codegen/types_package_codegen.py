@@ -2,7 +2,8 @@
 # SymForce - Copyright 2022, Skydio, Inc.
 # This source code is under the Apache 2.0 license found in the LICENSE file.
 # ----------------------------------------------------------------------------
-
+import collections
+import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,7 @@ from symforce.codegen import template_util
 from symforce.codegen.codegen_config import RenderTemplateConfig
 from symforce.values import IndexEntry
 from symforce.values import Values
+from symforce.codegen.type_description import TypeDescription
 
 
 @dataclass
@@ -43,7 +45,7 @@ class TypesCodegenData:
     lcm_bindings_dirs: T.Optional[codegen_util.LcmBindingsDirs] = None
 
 
-def generate_types(
+def generate_lcm_types(
     package_name: str,
     file_name: str,
     values_indices: T.Mapping[str, T.Dict[str, IndexEntry]],
@@ -150,34 +152,11 @@ def generate_types(
         )
 
     # TODO(nathan): Not sure if all edge cases are caught in the following, could probably clean this up some
-    typenames_dict = {}  # Maps typenames to generated types
-    namespaces_dict = {}  # Maps typenames to namespaces
-    for name in values_indices.keys():
-        # Record namespace/typenames for top-level types. If the type is external, we get the
-        # namespace and typename from shared_types.
-        if shared_types is not None and name in shared_types:
-            typenames_dict[name] = shared_types[name].split(".")[-1]
-            if "." in shared_types[name]:
-                namespaces_dict[name] = shared_types[name].split(".")[0]
-            else:
-                namespaces_dict[name] = package_name
-        else:
-            typenames_dict[name] = f"{name}_t"
-            namespaces_dict[name] = package_name
-    for typename, data in types_dict.items():
-        # Iterate through types in types_dict. If type is external, use the shared_types to
-        # get the namespace.
-        unformatted_typenames = T.cast(T.List[str], data["unformatted_typenames"])
-        for unformatted_typename in unformatted_typenames:
-            name = unformatted_typename.split(".")[-1]
-            if shared_types is not None and name in shared_types:
-                name = shared_types[name]
-            if "." in name:
-                typenames_dict[name] = name.split(".")[-1]
-                namespaces_dict[name] = name.split(".")[0]
-            else:
-                typenames_dict[name] = f"{name}_t"
-                namespaces_dict[name] = package_name
+    typenames_dict, namespaces_dict = \
+        build_typenames_and_namespace_dict(package_name=package_name,
+                                           values_indices=values_indices,
+                                           types_dict=types_dict,
+                                           shared_types=shared_types)
 
     codegen_data = TypesCodegenData(
         package_name=package_name,
@@ -206,7 +185,7 @@ def build_types_dict(
     package_name: str,
     values_indices: T.Mapping[str, T.Dict[str, IndexEntry]],
     shared_types: T.Optional[T.Mapping[str, str]] = None,
-) -> T.Dict[str, T.Dict[str, T.Any]]:
+) -> T.Dict[str, TypeDescription]:
     """
     Compute the structure of the types we need to generate for the given
     :class:`Values <symforce.values.Values>`.
@@ -214,7 +193,7 @@ def build_types_dict(
     if shared_types is None:
         shared_types = {}
 
-    types_dict: T.Dict[str, T.Dict[str, T.Any]] = {}
+    types_dict: T.Dict[str, TypeDescription] = {}
 
     for key, index in values_indices.items():
         _fill_types_dict_recursive(
@@ -226,6 +205,50 @@ def build_types_dict(
         )
 
     return types_dict
+
+
+def build_typenames_and_namespace_dict(
+        package_name: str,
+        values_indices: T.Mapping[str, T.Dict[str, IndexEntry]],
+        types_dict: T.Dict[str, TypeDescription],
+        shared_types: T.Optional[T.Mapping[str, str]]) -> T.Tuple[T.Dict[str, str], T.Dict[str, str]]:
+    """
+    Create mapping between names of types and their namespace/typename. This is used, e.g.,
+    to get the namespace of a type (whether internal or external) from the name of the variable
+    when generating code.
+    """
+    typenames_dict: T.Dict[str, str] = {}
+    namespaces_dict: T.Dict[str, str] = {}
+
+    for name in values_indices.keys():
+        # Record namespace/typenames for top-level types. If the type is external, we get the
+        # namespace and typename from shared_types.
+        if shared_types is not None and name in shared_types:
+            typenames_dict[name] = shared_types[name].split(".")[-1]
+            if "." in shared_types[name]:
+                namespaces_dict[name] = shared_types[name].split(".")[0]
+            else:
+                namespaces_dict[name] = package_name
+        else:
+            typenames_dict[name] = f"{name}_t"
+            namespaces_dict[name] = package_name
+
+    for typename, data in types_dict.items():
+        # Iterate through types in types_dict. If type is external, use the shared_types to
+        # get the namespace.
+        unformatted_typenames: T.List[str] = data.unformatted_typenames
+        for unformatted_typename in unformatted_typenames:
+            name = unformatted_typename.split(".")[-1]
+            if shared_types is not None and name in shared_types:
+                name = shared_types[name]
+            if "." in name:
+                typenames_dict[name] = name.split(".")[-1]
+                namespaces_dict[name] = name.split(".")[0]
+            else:
+                typenames_dict[name] = f"{name}_t"
+                namespaces_dict[name] = package_name
+
+    return typenames_dict, namespaces_dict
 
 
 def typename_from_key(key: str, shared_types: T.Mapping[str, str]) -> str:
@@ -258,27 +281,23 @@ def _fill_types_dict_recursive(
     index: T.Dict[str, IndexEntry],
     package_name: str,
     shared_types: T.Mapping[str, str],
-    types_dict: T.Dict[str, T.Dict[str, T.Any]],
+    types_dict: T.Dict[str, TypeDescription],
 ) -> None:
     """
     Recursively compute type information from the key and values index and fill into ``types_dict``.
     """
-    data: T.Dict[str, T.Any] = {}
-
     typename = typename_from_key(key, shared_types)
-    data["typename"] = typename
-    data["unformatted_typenames"] = [key]
-
-    # Add the current module for cases where it's not specified
-    data["full_typename"] = typename if "." in typename else ".".join([package_name, typename])
-
-    data["index"] = index
-    data["storage_dims"] = {key: info.storage_dim for key, info in index.items()}
+    data = TypeDescription(
+        typename=typename,
+        unformatted_typenames=[key],
+        full_typename=typename if "." in typename else ".".join([package_name, typename]),
+        index=index
+    )
 
     # Process child types
-    data["subtypes"] = {}
     for subkey, entry in index.items():
         datatype = entry.datatype()
+        # TODO(gareth): This seems like a bug possibly, shouldn't we check subkey here?
         if key in shared_types and "." in shared_types[key]:
             # This is a shared type. Don't generate any subtypes.
             continue
@@ -295,7 +314,7 @@ def _fill_types_dict_recursive(
             continue
 
         full_subkey = f"{key}.{subkey}"
-        data["subtypes"][subkey] = typename_from_key(full_subkey, shared_types)
+        data.subtypes[subkey] = typename_from_key(full_subkey, shared_types)
 
         assert element_index is not None
         _fill_types_dict_recursive(
@@ -309,7 +328,7 @@ def _fill_types_dict_recursive(
     if typename in types_dict:
 
         def assert_equal(field: str) -> None:
-            assert types_dict[typename][field] == data[field]
+            assert getattr(types_dict[typename], field) == getattr(data, field)
 
         # Everything had better be the same, except unformatted_typenames
         assert_equal("full_typename")

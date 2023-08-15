@@ -32,6 +32,7 @@ class FileType(enum.Enum):
     LCM = enum.auto()
     MAKEFILE = enum.auto()
     TYPESCRIPT = enum.auto()
+    RUST = enum.auto()
 
     @staticmethod
     def from_extension(extension: str) -> FileType:
@@ -49,6 +50,8 @@ class FileType(enum.Enum):
             return FileType.MAKEFILE
         elif extension == "ts":
             return FileType.TYPESCRIPT
+        elif extension == "rs":
+            return FileType.RUST
         else:
             raise ValueError(f"Could not get FileType from extension {extension}")
 
@@ -69,6 +72,8 @@ class FileType(enum.Enum):
             return "//"
         elif self in (FileType.PYTHON, FileType.PYTHON_INTERFACE):
             return "#"
+        elif self in (FileType.RUST, ):
+            return "///"
         else:
             raise NotImplementedError(f"Unknown comment prefix for {self}")
 
@@ -97,6 +102,8 @@ class FileType(enum.Enum):
             return format_util.format_py(file_contents)
         elif self == FileType.PYTHON_INTERFACE:
             return format_util.format_pyi(file_contents)
+        elif self == FileType.RUST:
+            return format_util.format_rust(file_contents)
         elif self == FileType.LCM:
             return file_contents
         else:
