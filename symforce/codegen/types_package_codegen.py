@@ -337,6 +337,6 @@ def _fill_types_dict_recursive(
         assert_equal("storage_dims")
         assert_equal("subtypes")
 
-        types_dict[typename]["unformatted_typenames"].extend(data["unformatted_typenames"])
+        types_dict[typename].unformatted_typenames.extend(data.unformatted_typenames)
     else:
         types_dict[typename] = data

@@ -64,7 +64,7 @@ class SymforceTypesCodegenTest(TestCase):
         inputs, outputs = self.build_values()
 
         output_dir = self.make_output_dir("sf_types_codegen_")
-        codegen_data = types_package_codegen.generate_types(
+        codegen_data = types_package_codegen.generate_lcm_types(
             package_name=name,
             file_name=name,
             values_indices=dict(input=inputs.index(), output=outputs.index()),
@@ -219,7 +219,7 @@ class SymforceTypesCodegenTest(TestCase):
         shared_types = {"input.one": "rot_t", "input.two": "rot_t", "output": "rot_t"}
 
         output_dir = self.make_output_dir("sf_types_codegen_reuse_")
-        codegen_data = types_package_codegen.generate_types(
+        codegen_data = types_package_codegen.generate_lcm_types(
             package_name="reuse",
             file_name="reuse",
             values_indices=dict(input=inputs.index(), output=outputs.index()),
