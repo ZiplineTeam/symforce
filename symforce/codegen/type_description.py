@@ -25,5 +25,5 @@ class TypeDescription:
         self.storage_dims: T.Dict[str, int] = {key: info.storage_dim for key, info in index.items()}
         self.subtypes: T.Dict[str, str] = {}
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"TypeDescription(typename={self.typename})"

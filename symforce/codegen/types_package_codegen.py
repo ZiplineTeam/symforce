@@ -32,7 +32,7 @@ class TypesCodegenData:
     lcm_type_dir: Path
     lcm_bindings_output_dir: T.Optional[T.Openable]
     lcm_files: T.List[str]
-    types_dict: T.Dict[str, T.Dict[str, T.Any]]
+    types_dict: T.Dict[str, TypeDescription]
 
     # Save mapping between names of types and their namespace/typename. This is used, e.g., to get
     # the namespace of a type (whether internal or external) from the name of the variable when
