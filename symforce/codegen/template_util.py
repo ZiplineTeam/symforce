@@ -72,7 +72,7 @@ class FileType(enum.Enum):
             return "//"
         elif self in (FileType.PYTHON, FileType.PYTHON_INTERFACE):
             return "#"
-        elif self in (FileType.RUST, ):
+        elif self in (FileType.RUST,):
             return "///"
         else:
             raise NotImplementedError(f"Unknown comment prefix for {self}")

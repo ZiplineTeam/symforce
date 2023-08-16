@@ -2,17 +2,19 @@ from symforce import typing as T
 from symforce.values.index_entry import IndexEntry
 
 
-class TypeDescription(object):
+class TypeDescription:
     """
     Description of a type. Contains all the data required to code-generate a type definition.
     Replaces what was previously built by build_types_dict.
     """
 
-    def __init__(self,
-                 typename: str,
-                 unformatted_typenames: T.List[str],
-                 full_typename: str,
-                 index: T.Dict[str, IndexEntry]):
+    def __init__(
+        self,
+        typename: str,
+        unformatted_typenames: T.List[str],
+        full_typename: str,
+        index: T.Dict[str, IndexEntry],
+    ):
         """
         Construct a new TypeDescription.
         """
@@ -24,4 +26,4 @@ class TypeDescription(object):
         self.subtypes: T.Dict[str, str] = {}
 
     def __repr__(self):
-        return f'TypeDescription(typename={self.typename})'
+        return f"TypeDescription(typename={self.typename})"

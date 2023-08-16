@@ -3,13 +3,16 @@
 # This source code is under the Apache 2.0 license found in the LICENSE file.
 # ----------------------------------------------------------------------------
 # Everything in this file is SymPy, not SymEngine (even when SymForce is on the SymEngine backend)
+from typing import Any
+from typing import Dict
+
 import sympy
 from sympy.printing.rust import RustCodePrinter
 
 from symforce import typing as T
 
 
-class IntegerWrapper(sympy.Integer):
+class IntegerWrapper(sympy.Integer):  # pylint: disable=too-many-ancestors
     """Wrapper to protect integers from conversion to Scalar, when appropriate."""
 
     pass
@@ -69,41 +72,43 @@ class RustCodePrinterCustomized(RustCodePrinter):
         args = []
         for arg in expr.args:
             # Mul already handles multiplication by one or negative one.
-            if isinstance(arg, sympy.Integer) and not (arg == 1 or arg == -1):
+            if isinstance(arg, sympy.Integer) and arg not in [-1, 1]:
                 args.append(sympy.Float(arg))
             else:
                 args.append(arg)
         return super()._print_Mul(expr=sympy.Mul(*args))
 
-    def _print_Exp1(self, expr: sympy.core.numbers.E, _type=False):
+    def _print_Exp1(self, expr: sympy.core.numbers.E, _type: bool = False) -> str:
         """
         Customizations:
             * Reference rust standard library, and cast appropriately.
         """
         return "Scalar::from_f64(std::f64::consts::E).unwrap()"
 
-    def _print_Pi(self, expr: sympy.core.numbers.Pi, _type=False) -> str:
+    def _print_Pi(self, expr: sympy.core.numbers.Pi, _type: bool = False) -> str:
         """
         Customizations:
             * Reference rust standard library, and cast appropriately.
         """
         return "Scalar::from_f64(std::f64::consts::PI).unwrap()"
 
-    def _print_Infinity(self, expr: sympy.core.numbers.Infinity, _type=False):
+    def _print_Infinity(self, expr: sympy.core.numbers.Infinity, _type: bool = False) -> str:
         """
         Customizations:
             * Reference rust standard library, and cast appropriately.
         """
         return "Scalar::from_f64(f64::INFINITY).unwrap()"
 
-    def _print_NegativeInfinity(self, expr: sympy.core.numbers.NegativeInfinity, _type=False):
+    def _print_NegativeInfinity(
+        self, expr: sympy.core.numbers.NegativeInfinity, _type: bool = False
+    ) -> str:
         """
         Customizations:
             * Reference rust standard library, and cast appropriately.
         """
         return "Scalar::from_f64(f64::NEG_INFINITY).unwrap()"
 
-    def _print_NaN(self, expr: sympy.core.numbers.NaN, _type=False):
+    def _print_NaN(self, expr: sympy.core.numbers.NaN, _type: bool = False) -> str:
         """
         Customizations:
             * Reference rust standard library, and cast appropriately.
@@ -125,11 +130,11 @@ class RustCodePrinterCustomized(RustCodePrinter):
             * Wrap exponent argument in IntegerWrapper, so it does not get converted to "Scalar".
               We do this so that powi() receives the correct type.
         """
-        if expr.base.is_integer and not expr.exp.is_integer:
+        if expr.base.is_Integer and not expr.exp.is_Integer:
             expr = type(expr)(sympy.Float(expr.base), expr.exp)
             return self._print(expr)
 
-        if expr.exp.is_integer:
+        if expr.exp.is_Integer:
             # Prevent integer from being converted to a float:
             expr = sympy.Pow(b=expr.base, e=IntegerWrapper(expr.exp))
 
@@ -169,7 +174,7 @@ class RustCodePrinterCustomized(RustCodePrinter):
         left_arg = self._print_caller_var(expr=expr.args[0])
         return f"{left_arg}.min({rhs})"
 
-    def _print(self, expr, **kwargs):
+    def _print(self, expr: sympy.Basic, **kwargs: Dict[str, Any]) -> str:
         """
         Customizations:
             * Max/Min define the "printmethod" attribute, which circumvents overrides in CodePrinter.
@@ -181,7 +186,7 @@ class RustCodePrinterCustomized(RustCodePrinter):
             return self._print_Max(expr=expr)
         return super()._print(expr=expr, **kwargs)
 
-    def _print_caller_var(self, expr):
+    def _print_caller_var(self, expr: sympy.Basic) -> str:
         """
         Customizations:
             * Do not pass the _type argument when printing numbers. We have explicit casting and to

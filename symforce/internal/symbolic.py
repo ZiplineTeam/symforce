@@ -75,8 +75,8 @@ if not T.TYPE_CHECKING and symforce.get_symbolic_api() == "symengine":
     from symengine import S
     from symengine import Subs
     from symengine import SympifyError
-    from symengine import UnevaluatedExpr
     from symengine import UndefFunction
+    from symengine import UnevaluatedExpr
     from symengine import UniversalSet
     from symengine import acos
     from symengine import acosh
@@ -180,7 +180,6 @@ elif symforce.get_symbolic_api() == "sympy":
     from sympy import Subs
     from sympy import SympifyError
     from sympy import UnevaluatedExpr
-    from sympy.core.function import UndefinedFunction as UndefFunction
     from sympy import UniversalSet
     from sympy import acos
     from sympy import acosh
@@ -243,6 +242,7 @@ elif symforce.get_symbolic_api() == "sympy":
     from sympy import var
     from sympy import zeta
     from sympy import zoo
+    from sympy.core.function import UndefinedFunction as UndefFunction
 else:
     raise symforce.InvalidSymbolicApiError(symforce.get_symbolic_api())
 

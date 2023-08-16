@@ -2,8 +2,6 @@
 # SymForce - Copyright 2022, Skydio, Inc.
 # This source code is under the Apache 2.0 license found in the LICENSE file.
 # ----------------------------------------------------------------------------
-import collections
-import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,9 +14,9 @@ from symforce import typing as T
 from symforce.codegen import codegen_util
 from symforce.codegen import template_util
 from symforce.codegen.codegen_config import RenderTemplateConfig
+from symforce.codegen.type_description import TypeDescription
 from symforce.values import IndexEntry
 from symforce.values import Values
-from symforce.codegen.type_description import TypeDescription
 
 
 @dataclass
@@ -152,11 +150,12 @@ def generate_lcm_types(
         )
 
     # TODO(nathan): Not sure if all edge cases are caught in the following, could probably clean this up some
-    typenames_dict, namespaces_dict = \
-        build_typenames_and_namespace_dict(package_name=package_name,
-                                           values_indices=values_indices,
-                                           types_dict=types_dict,
-                                           shared_types=shared_types)
+    typenames_dict, namespaces_dict = build_typenames_and_namespace_dict(
+        package_name=package_name,
+        values_indices=values_indices,
+        types_dict=types_dict,
+        shared_types=shared_types,
+    )
 
     codegen_data = TypesCodegenData(
         package_name=package_name,
@@ -208,10 +207,11 @@ def build_types_dict(
 
 
 def build_typenames_and_namespace_dict(
-        package_name: str,
-        values_indices: T.Mapping[str, T.Dict[str, IndexEntry]],
-        types_dict: T.Dict[str, TypeDescription],
-        shared_types: T.Optional[T.Mapping[str, str]]) -> T.Tuple[T.Dict[str, str], T.Dict[str, str]]:
+    package_name: str,
+    values_indices: T.Mapping[str, T.Dict[str, IndexEntry]],
+    types_dict: T.Dict[str, TypeDescription],
+    shared_types: T.Optional[T.Mapping[str, str]],
+) -> T.Tuple[T.Dict[str, str], T.Dict[str, str]]:
     """
     Create mapping between names of types and their namespace/typename. This is used, e.g.,
     to get the namespace of a type (whether internal or external) from the name of the variable
@@ -233,7 +233,7 @@ def build_typenames_and_namespace_dict(
             typenames_dict[name] = f"{name}_t"
             namespaces_dict[name] = package_name
 
-    for typename, data in types_dict.items():
+    for data in types_dict.values():
         # Iterate through types in types_dict. If type is external, use the shared_types to
         # get the namespace.
         unformatted_typenames: T.List[str] = data.unformatted_typenames
@@ -291,7 +291,7 @@ def _fill_types_dict_recursive(
         typename=typename,
         unformatted_typenames=[key],
         full_typename=typename if "." in typename else ".".join([package_name, typename]),
-        index=index
+        index=index,
     )
 
     # Process child types

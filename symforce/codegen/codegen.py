@@ -661,6 +661,7 @@ class Codegen:
             templates: Optional list of templates to append to.
         """
         assert self.namespaces_dict is not None
+        assert self.namespace is not None
         self.unique_namespaces = set(self.namespaces_dict.values())
 
         template_data = dict(self.common_data(), spec=self)
